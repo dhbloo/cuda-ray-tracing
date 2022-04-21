@@ -13,18 +13,20 @@
 #include "box.h"
 #include "camera.h"
 #include "color.h"
+#include "external/window.h"
 #include "hittable_list.h"
 #include "material.h"
 #include "rtweekend.h"
 #include "sphere.h"
 
 #include <iostream>
+#include <thread>
 
-color ray_color(const ray           &r,
-                const color         &background,
-                const hittable      &world,
-                shared_ptr<hittable> lights,
-                int                  depth)
+color ray_radiance(const ray           &r,
+                   const color         &background,
+                   const hittable      &world,
+                   shared_ptr<hittable> lights,
+                   int                  depth)
 {
     hit_record rec;
 
@@ -44,7 +46,7 @@ color ray_color(const ray           &r,
 
     if (srec.is_specular) {
         return srec.attenuation
-               * ray_color(srec.specular_ray, background, world, lights, depth - 1);
+               * ray_radiance(srec.specular_ray, background, world, lights, depth - 1);
     }
 
     auto        light_ptr = make_shared<hittable_pdf>(lights, rec.p);
@@ -54,7 +56,7 @@ color ray_color(const ray           &r,
 
     return emitted
            + srec.attenuation * rec.mat_ptr->scattering_pdf(r, rec, scattered)
-                 * ray_color(scattered, background, world, lights, depth - 1) / pdf_val;
+                 * ray_radiance(scattered, background, world, lights, depth - 1) / pdf_val;
 }
 
 hittable_list cornell_box()
@@ -111,7 +113,7 @@ int main()
     point3 lookat(278, 278, 0);
     vec3   vup(0, 1, 0);
     auto   dist_to_focus = 10.0f;
-    auto   aperture      = 0.0f;
+    auto   aperture      = 0.001f;
     auto   vfov          = 40.0f;
     auto   time0         = 0.0f;
     auto   time1         = 1.0f;
@@ -120,21 +122,36 @@ int main()
 
     // Render
 
-    std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+    Window window(image_width, image_height, "Ray tracing (CPU)");
+    auto   start_time = std::chrono::high_resolution_clock::now();
 
     for (int j = image_height - 1; j >= 0; --j) {
-        std::cerr << "\rScanlines remaining: " << j << ' ' << std::flush;
+        std::cout << "\rScanlines remaining: " << j << ' ' << std::flush;
         for (int i = 0; i < image_width; ++i) {
-            color pixel_color(0, 0, 0);
+            color radiance(0, 0, 0);
             for (int s = 0; s < samples_per_pixel; ++s) {
                 auto u = (i + random_float()) / (image_width - 1);
                 auto v = (j + random_float()) / (image_height - 1);
                 ray  r = cam.get_ray(u, v);
-                pixel_color += ray_color(r, background, world, lights, max_depth);
+                radiance += ray_radiance(r, background, world, lights, max_depth);
             }
-            write_color(std::cout, pixel_color, samples_per_pixel);
+            color pixel_color                = radiance_to_color(radiance, samples_per_pixel);
+            *window(i, image_height - 1 - j) = color_to_rgb_integer(pixel_color);
         }
+        window.update();
+        if (!window.is_run())
+            std::exit(0);
     }
 
-    std::cerr << "\nDone.\n";
+    auto  end_time   = std::chrono::high_resolution_clock::now();
+    auto  elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    float elapsed_seconds = elapsed_ms.count() * 0.001f;
+    int64_t total_rays    = (int64_t)samples_per_pixel * image_height * image_width;
+    std::cout << "\nDone after " << elapsed_seconds << " seconds, " << total_rays / elapsed_seconds
+              << " rays per second.\n";
+
+    while (window.is_run()) {
+        window.dispatch();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 }

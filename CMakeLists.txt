@@ -28,6 +28,8 @@ set(SOURCE_CPU
 	src/cpu/pdf.h
 	src/cpu/sphere.h
 	src/cpu/main.cc
+	src/common/external/window.h
+	src/common/external/window.cpp
 )
 
 include_directories(src/common)

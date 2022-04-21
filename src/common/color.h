@@ -15,11 +15,11 @@
 
 #include <iostream>
 
-void write_color(std::ostream &out, color pixel_color, int samples_per_pixel)
+inline color radiance_to_color(color radiance, int samples_per_pixel)
 {
-    auto r = pixel_color.x();
-    auto g = pixel_color.y();
-    auto b = pixel_color.z();
+    auto r = radiance.x();
+    auto g = radiance.y();
+    auto b = radiance.z();
 
     // Replace NaN components with zero. See explanation in Ray Tracing: The Rest of Your Life.
     if (r != r)
@@ -35,10 +35,32 @@ void write_color(std::ostream &out, color pixel_color, int samples_per_pixel)
     g          = sqrt(scale * g);
     b          = sqrt(scale * b);
 
+    return color(r, g, b);
+}
+
+inline void write_color(std::ostream &out, color pixel_color)
+{
+    auto r = pixel_color.x();
+    auto g = pixel_color.y();
+    auto b = pixel_color.z();
+
     // Write the translated [0,255] value of each color component.
     out << static_cast<int>(256 * clamp(r, 0.0f, 0.999f)) << ' '
         << static_cast<int>(256 * clamp(g, 0.0f, 0.999f)) << ' '
         << static_cast<int>(256 * clamp(b, 0.0f, 0.999f)) << '\n';
+}
+
+inline int color_to_rgb_integer(color pixel_color)
+{
+    auto r = pixel_color.x();
+    auto g = pixel_color.y();
+    auto b = pixel_color.z();
+
+    int rb = (int)clamp(r * 255, 0.0f, 255.0f);
+    int gb = (int)clamp(g * 255, 0.0f, 255.0f);
+    int bb = (int)clamp(b * 255, 0.0f, 255.0f);
+
+    return bb | (gb << 8) | (rb << 16);
 }
 
 #endif
