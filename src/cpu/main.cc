@@ -27,41 +27,46 @@
     #include <omp.h>
 #endif
 
-color ray_radiance(const ray           &r,
-                   const color         &background,
+color ray_radiance(ray                  r,
+                   color                background,
                    const hittable      &world,
                    shared_ptr<hittable> lights,
                    int                  depth)
 {
     hit_record rec;
+    color      accumL, accumR(1.0f, 1.0f, 1.0f);
 
     // If we've exceeded the ray bounce limit, no more light is gathered.
-    if (depth <= 0)
-        return color(0, 0, 0);
+    for (; depth > 0; depth--) {
+        // If the ray hits nothing, return the background color.
+        if (!world.hit(r, 0.001f, infinity, rec)) {
+            accumL += accumR * background;
+            break;
+        }
 
-    // If the ray hits nothing, return the background color.
-    if (!world.hit(r, 0.001f, infinity, rec))
-        return background;
+        scatter_record srec;
+        accumL += accumR * rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
 
-    scatter_record srec;
-    color          emitted = rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
+        if (!rec.mat_ptr->scatter(r, rec, srec))
+            break;
+        else
+            accumR = accumR * srec.attenuation;
 
-    if (!rec.mat_ptr->scatter(r, rec, srec))
-        return emitted;
+        if (srec.is_specular) {
+            r = srec.specular_ray;
+        }
+        else {
+            auto        light_ptr = make_shared<hittable_pdf>(lights, rec.p);
+            mixture_pdf p(light_ptr, srec.pdf_ptr);
+            ray         scattered = ray(rec.p, p.generate(), r.time());
+            auto        pdf_val   = p.value(scattered.direction());
 
-    if (srec.is_specular) {
-        return srec.attenuation
-               * ray_radiance(srec.specular_ray, background, world, lights, depth - 1);
+            accumR = accumR * rec.mat_ptr->scattering_pdf(r, rec, scattered) / pdf_val;
+            r      = scattered;
+        }
     }
 
-    auto        light_ptr = make_shared<hittable_pdf>(lights, rec.p);
-    mixture_pdf p(light_ptr, srec.pdf_ptr);
-    ray         scattered = ray(rec.p, p.generate(), r.time());
-    auto        pdf_val   = p.value(scattered.direction());
-
-    return emitted
-           + srec.attenuation * rec.mat_ptr->scattering_pdf(r, rec, scattered)
-                 * ray_radiance(scattered, background, world, lights, depth - 1) / pdf_val;
+    return accumL;
 }
 
 hittable_list cornell_box()
@@ -99,7 +104,7 @@ int main()
     const auto aspect_ratio      = 1.0f / 1.0f;
     const int  image_width       = 600;
     const int  image_height      = static_cast<int>(image_width / aspect_ratio);
-    const int  samples_per_pixel = 200;
+    const int  samples_per_pixel = 10;
     const int  max_depth         = 50;
 
     // World
