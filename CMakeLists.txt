@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1.0)
+cmake_minimum_required(VERSION 3.12.0)
 
 project(CudaRayTracing)
 set(CMAKE_CXX_STANDARD 14)
@@ -35,3 +35,10 @@ set(SOURCE_CPU
 include_directories(src/common)
 
 add_executable(ray-tracing-cpu ${SOURCE_CPU})
+
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+	add_executable(ray-tracing-cpu-openmp ${SOURCE_CPU})
+    target_link_libraries(ray-tracing-cpu-openmp PUBLIC OpenMP::OpenMP_CXX)
+	target_compile_definitions(ray-tracing-cpu-openmp PUBLIC WITH_OPENMP)
+endif()

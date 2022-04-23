@@ -19,8 +19,13 @@
 #include "rtweekend.h"
 #include "sphere.h"
 
+#include <atomic>
+#include <iomanip>
 #include <iostream>
 #include <thread>
+#ifdef WITH_OPENMP
+    #include <omp.h>
+#endif
 
 color ray_radiance(const ray           &r,
                    const color         &background,
@@ -94,7 +99,7 @@ int main()
     const auto aspect_ratio      = 1.0f / 1.0f;
     const int  image_width       = 600;
     const int  image_height      = static_cast<int>(image_width / aspect_ratio);
-    const int  samples_per_pixel = 1000;
+    const int  samples_per_pixel = 200;
     const int  max_depth         = 50;
 
     // World
@@ -122,11 +127,30 @@ int main()
 
     // Render
 
-    Window window(image_width, image_height, "Ray tracing (CPU)");
-    auto   start_time = std::chrono::high_resolution_clock::now();
+    Window           window(image_width, image_height, "Ray tracing (CPU)");
+    std::atomic<int> scanline_remained = image_height;
+    auto             start_time        = std::chrono::high_resolution_clock::now();
 
+#ifdef WITH_OPENMP
+    omp_lock_t lock;
+    omp_init_lock(&lock);
+    #pragma omp parallel for
+#endif
     for (int j = image_height - 1; j >= 0; --j) {
-        std::cout << "\rScanlines remaining: " << j << ' ' << std::flush;
+#ifdef WITH_OPENMP
+        if (omp_test_lock(&lock))
+#endif
+        {
+            std::cout << "\rScanlines remaining: "
+                      << scanline_remained.load(std::memory_order_relaxed) << ' ' << std::flush;
+            window.update();
+            if (!window.is_run())
+                std::exit(0);
+#ifdef WITH_OPENMP
+            omp_unset_lock(&lock);
+#endif
+        }
+
         for (int i = 0; i < image_width; ++i) {
             color radiance(0, 0, 0);
             for (int s = 0; s < samples_per_pixel; ++s) {
@@ -138,18 +162,18 @@ int main()
             color pixel_color                = radiance_to_color(radiance, samples_per_pixel);
             *window(i, image_height - 1 - j) = color_to_rgb_integer(pixel_color);
         }
-        window.update();
-        if (!window.is_run())
-            std::exit(0);
+
+        scanline_remained.fetch_sub(1, std::memory_order_relaxed);
     }
 
     auto  end_time   = std::chrono::high_resolution_clock::now();
     auto  elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     float elapsed_seconds = elapsed_ms.count() * 0.001f;
     int64_t total_rays    = (int64_t)samples_per_pixel * image_height * image_width;
-    std::cout << "\nDone after " << elapsed_seconds << " seconds, " << total_rays / elapsed_seconds
-              << " rays per second.\n";
+    std::cout << std::fixed << std::setprecision(3) << "\nDone after " << elapsed_seconds
+              << " seconds, " << total_rays / elapsed_seconds / 1000000.f << " Mrays per second.\n";
 
+    window.update();
     while (window.is_run()) {
         window.dispatch();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
