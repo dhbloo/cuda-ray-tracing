@@ -17,9 +17,7 @@ class ray
 {
 public:
     ray() {}
-    ray(const point3 &origin, const vec3 &direction) : orig(origin), dir(direction), tm(0) {}
-
-    ray(const point3 &origin, const vec3 &direction, float time)
+    ray(const point3 &origin, const vec3 &direction, float time = 0.0f)
         : orig(origin)
         , dir(direction)
         , tm(time)

@@ -11,8 +11,8 @@
 // along with this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //==============================================================================================
 
+#include "external/stb_image.h"
 #include "perlin.h"
-#include "rtw_stb_image.h"
 #include "rtweekend.h"
 
 #include <iostream>
@@ -100,7 +100,7 @@ public:
         bytes_per_scanline = bytes_per_pixel * width;
     }
 
-    ~image_texture() { STBI_FREE(data); }
+    ~image_texture() { free(data); }
 
     virtual color value(float u, float v, const vec3 &p) const override
     {

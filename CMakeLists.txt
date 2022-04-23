@@ -13,7 +13,8 @@ set(COMMON_ALL
 	src/common/aabb.h
 	src/common/texture.h
 	src/common/perlin.h
-	src/common/rtw_stb_image.h
+	src/common/onb.h
+	src/common/rtw_stb_image.cpp
 )
 
 set(SOURCE_CPU
@@ -24,7 +25,6 @@ set(SOURCE_CPU
 	src/cpu/hittable.h
 	src/cpu/hittable_list.h
 	src/cpu/material.h
-	src/cpu/onb.h
 	src/cpu/pdf.h
 	src/cpu/sphere.h
 	src/cpu/main.cc
