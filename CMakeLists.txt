@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.12.0)
+cmake_minimum_required(VERSION 3.17.0 FATAL_ERROR)
 
-project(CudaRayTracing)
+project(CudaRayTracing LANGUAGES CUDA CXX)
 set(CMAKE_CXX_STANDARD 14)
 
 # Source
@@ -15,6 +15,8 @@ set(COMMON_ALL
 	src/common/perlin.h
 	src/common/onb.h
 	src/common/rtw_stb_image.cpp
+	src/common/external/window.h
+	src/common/external/window.cpp
 )
 
 set(SOURCE_CPU
@@ -28,8 +30,11 @@ set(SOURCE_CPU
 	src/cpu/pdf.h
 	src/cpu/sphere.h
 	src/cpu/main.cc
-	src/common/external/window.h
-	src/common/external/window.cpp
+)
+
+set(SOURCE_GPU
+	${COMMON_ALL}
+	src/gpu/main.cu
 )
 
 include_directories(src/common)
@@ -42,3 +47,8 @@ if(OpenMP_CXX_FOUND)
     target_link_libraries(ray-tracing-cpu-openmp PUBLIC OpenMP::OpenMP_CXX)
 	target_compile_definitions(ray-tracing-cpu-openmp PUBLIC WITH_OPENMP)
 endif()
+
+find_package(CUDAToolkit)
+add_executable(ray-tracing-gpu ${SOURCE_GPU})
+target_link_libraries(ray-tracing-gpu PRIVATE CUDA::cudart)
+set_target_properties(ray-tracing-gpu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
