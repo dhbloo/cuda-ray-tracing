@@ -96,7 +96,7 @@ public:
 
     __device__ virtual vec3 generate() const override
     {
-        if (random_float() < 0.5)
+        if (random_float() < 0.5f)
             return p0.generate();
         else
             return p1.generate();

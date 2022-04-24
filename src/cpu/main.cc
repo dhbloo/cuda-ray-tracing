@@ -9,15 +9,15 @@
 // along with this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //==============================================================================================
 
-#include "aarect.h"
-#include "box.h"
 #include "camera.h"
 #include "color.h"
-#include "external/window.h"
 #include "hittable_list.h"
 #include "material.h"
 #include "rtweekend.h"
-#include "sphere.h"
+#include "tracing.h"
+
+// window
+#include "external/window.h"
 
 #include <atomic>
 #include <iomanip>
@@ -27,92 +27,21 @@
     #include <omp.h>
 #endif
 
-color ray_radiance(ray             r,
-                   color           background,
-                   const hittable &world,
-                   const hittable &lights,
-                   int             depth)
-{
-    hit_record rec;
-    color      accumL, accumR(1.0f, 1.0f, 1.0f);
-
-    // If we've exceeded the ray bounce limit, no more light is gathered.
-    for (; depth > 0; depth--) {
-        // If the ray hits nothing, return the background color.
-        if (!world.hit(r, 0.001f, infinity, rec)) {
-            accumL += accumR * background;
-            break;
-        }
-
-        scatter_record srec;
-        accumL += accumR * rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
-
-        if (!rec.mat_ptr->scatter(r, rec, srec))
-            break;
-        else
-            accumR = accumR * srec.attenuation;
-
-        if (srec.is_specular) {
-            r = srec.specular_ray;
-        }
-        else {
-            hittable_pdf light(lights, rec.p);
-            mixture_pdf  p(light, *srec.pdf_ptr);
-            ray          scattered = ray(rec.p, p.generate(), r.time());
-            auto         pdf_val   = p.value(scattered.direction());
-
-            accumR = accumR * rec.mat_ptr->scattering_pdf(r, rec, scattered) / pdf_val;
-            r      = scattered;
-        }
-    }
-
-    return accumL;
-}
-
-void cornell_box(hittable_list &objects, hittable_list &lights)
-{
-    auto red   = make_shared<lambertian>(color(.65f, .05f, .05f));
-    auto white = make_shared<lambertian>(color(.73f, .73f, .73f));
-    auto green = make_shared<lambertian>(color(.12f, .45f, .15f));
-    auto light = make_shared<diffuse_light>(color(15, 15, 15));
-
-    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 555, green));
-    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 0, red));
-    objects.add(make_shared<flip_face>(make_shared<xz_rect>(213, 343, 227, 332, 554, light)));
-    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 555, white));
-    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 0, white));
-    objects.add(make_shared<xy_rect>(0, 555, 0, 555, 555, white));
-
-    shared_ptr<material> aluminum = make_shared<metal>(color(0.8f, 0.85f, 0.88f), 0.0f);
-    shared_ptr<hittable> box1 = make_shared<box>(point3(0, 0, 0), point3(165, 330, 165), aluminum);
-    box1                      = make_shared<rotate_y>(box1, 15);
-    box1                      = make_shared<translate>(box1, vec3(265, 0, 295));
-    objects.add(box1);
-
-    auto glass = make_shared<dielectric>(1.5);
-    objects.add(make_shared<sphere>(point3(190, 90, 190), 90, glass));
-
-    lights.add(make_shared<xz_rect>(213, 343, 227, 332, 554, make_shared<material>()));
-    lights.add(make_shared<sphere>(point3(190, 90, 190), 90, make_shared<material>()));
-}
-
 int main()
 {
     // Image
 
-    const int  image_width       = 600;
-    const int  image_height      = 600;
+    const int  image_width       = 800;
+    const int  image_height      = 800;
     const auto aspect_ratio      = static_cast<float>(image_width) / image_height;
-    const int  samples_per_pixel = 10;
-    const int  max_depth         = 2;
+    const int  samples_per_pixel = 1000;
+    const int  max_depth         = 6;
 
     // World
 
     hittable_list world;
     hittable_list lights;
     cornell_box(world, lights);
-
-    color background(0, 0, 0);
 
     // Camera
 
@@ -159,7 +88,7 @@ int main()
                 auto u = (i + random_float()) / (image_width - 1);
                 auto v = (j + random_float()) / (image_height - 1);
                 ray  r = cam.get_ray(u, v);
-                radiance += ray_radiance(r, background, world, lights, max_depth);
+                radiance += ray_radiance(r, world, lights, max_depth);
             }
             color pixel_color                = radiance_to_color(radiance, samples_per_pixel);
             *window(i, image_height - 1 - j) = color_to_rgb_integer(pixel_color);

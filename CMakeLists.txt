@@ -21,6 +21,7 @@ set(COMMON_ALL
 	src/common/material.h
 	src/common/pdf.h
 	src/common/sphere.h
+	src/common/constant_medium.h
 	src/common/rtw_stb_image.cpp
 	src/common/external/window.h
 	src/common/external/window.cpp

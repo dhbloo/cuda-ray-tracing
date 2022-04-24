@@ -22,6 +22,8 @@ struct scatter_record
     bool       is_specular;
     color      attenuation;
     const pdf *pdf_ptr = nullptr;
+
+    cosine_pdf pdf;  // get rid of dynamic malloc
 };
 
 class material
@@ -55,11 +57,10 @@ public:
     __device__ virtual bool
     scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const override
     {
-        pdf = cosine_pdf(rec.normal);
-
         srec.is_specular = false;
         srec.attenuation = albedo->value(rec.u, rec.v, rec.p);
-        srec.pdf_ptr     = &pdf;
+        srec.pdf         = cosine_pdf(rec.normal);
+        srec.pdf_ptr     = &srec.pdf;
         return true;
     }
 
@@ -71,8 +72,7 @@ public:
     }
 
 public:
-    shared_ptr<tex>    albedo;
-    mutable cosine_pdf pdf;  // used for srec return value in scatter()
+    shared_ptr<tex> albedo;
 };
 
 class metal : public material
@@ -165,19 +165,15 @@ public:
     __device__ isotropic(color c) : albedo(make_shared<solid_color>(c)) {}
     __device__ isotropic(shared_ptr<tex> a) : albedo(a) {}
 
-#if 0
-        // Issue #669
-        // This method doesn't match the signature in the base `material` class, so this one's
-        // never actually called. Disabling this definition until we sort this out.
-
-        virtual bool scatter(
-            const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered
-        ) const override {
-            scattered = ray(rec.p, random_in_unit_sphere(), r_in.time());
-            attenuation = albedo->value(rec.u, rec.v, rec.p);
-            return true;
-        }
-#endif
+    __device__ virtual bool
+    scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const override
+    {
+        srec.specular_ray = ray(rec.p, random_in_unit_sphere(), r_in.time());
+        srec.attenuation  = albedo->value(rec.u, rec.v, rec.p);
+        srec.is_specular  = true;
+        srec.pdf_ptr      = nullptr;
+        return true;
+    }
 
 public:
     shared_ptr<tex> albedo;
