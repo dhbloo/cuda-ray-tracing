@@ -17,9 +17,7 @@
 class xy_rect : public hittable
 {
 public:
-    xy_rect() {}
-
-    xy_rect(float _x0, float _x1, float _y0, float _y1, float _k, shared_ptr<material> mat)
+    __host__ xy_rect(float _x0, float _x1, float _y0, float _y1, float _k, shared_ptr<material> mat)
         : x0(_x0)
         , x1(_x1)
         , y0(_y0)
@@ -27,9 +25,10 @@ public:
         , k(_k)
         , mp(mat) {};
 
-    virtual bool hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
+    __device__ virtual bool
+    hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
 
-    virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
+    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
     {
         // The bounding box must have non-zero width in each dimension, so pad the Z
         // dimension a small amount.
@@ -45,9 +44,7 @@ public:
 class xz_rect : public hittable
 {
 public:
-    xz_rect() {}
-
-    xz_rect(float _x0, float _x1, float _z0, float _z1, float _k, shared_ptr<material> mat)
+    __host__ xz_rect(float _x0, float _x1, float _z0, float _z1, float _k, shared_ptr<material> mat)
         : x0(_x0)
         , x1(_x1)
         , z0(_z0)
@@ -55,9 +52,10 @@ public:
         , k(_k)
         , mp(mat) {};
 
-    virtual bool hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
+    __device__ virtual bool
+    hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
 
-    virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
+    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
     {
         // The bounding box must have non-zero width in each dimension, so pad the Y
         // dimension a small amount.
@@ -65,7 +63,7 @@ public:
         return true;
     }
 
-    virtual float pdf_value(const point3 &origin, const vec3 &v) const override
+    __device__ virtual float pdf_value(const point3 &origin, const vec3 &v) const override
     {
         hit_record rec;
         if (!this->hit(ray(origin, v), 0.001f, infinity, rec))
@@ -78,7 +76,7 @@ public:
         return distance_squared / (cosine * area);
     }
 
-    virtual vec3 random(const point3 &origin) const override
+    __device__ virtual vec3 random(const point3 &origin) const override
     {
         auto random_point = point3(random_float(x0, x1), k, random_float(z0, z1));
         return random_point - origin;
@@ -92,9 +90,7 @@ public:
 class yz_rect : public hittable
 {
 public:
-    yz_rect() {}
-
-    yz_rect(float _y0, float _y1, float _z0, float _z1, float _k, shared_ptr<material> mat)
+    __host__ yz_rect(float _y0, float _y1, float _z0, float _z1, float _k, shared_ptr<material> mat)
         : y0(_y0)
         , y1(_y1)
         , z0(_z0)
@@ -102,9 +98,10 @@ public:
         , k(_k)
         , mp(mat) {};
 
-    virtual bool hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
+    __device__ virtual bool
+    hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
 
-    virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
+    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
     {
         // The bounding box must have non-zero width in each dimension, so pad the X
         // dimension a small amount.
@@ -117,7 +114,7 @@ public:
     float                y0, y1, z0, z1, k;
 };
 
-bool xy_rect::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
+__device__ bool xy_rect::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
 {
     auto t = (k - r.origin().z()) / r.direction().z();
     if (t < t_min || t > t_max)
@@ -133,13 +130,13 @@ bool xy_rect::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
     rec.t               = t;
     auto outward_normal = vec3(0, 0, 1);
     rec.set_face_normal(r, outward_normal);
-    rec.mat_ptr = mp;
+    rec.mat_ptr = mp.get();
     rec.p       = r.at(t);
 
     return true;
 }
 
-bool xz_rect::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
+__device__ bool xz_rect::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
 {
     auto t = (k - r.origin().y()) / r.direction().y();
     if (t < t_min || t > t_max)
@@ -155,13 +152,13 @@ bool xz_rect::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
     rec.t               = t;
     auto outward_normal = vec3(0, 1, 0);
     rec.set_face_normal(r, outward_normal);
-    rec.mat_ptr = mp;
+    rec.mat_ptr = mp.get();
     rec.p       = r.at(t);
 
     return true;
 }
 
-bool yz_rect::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
+__device__ bool yz_rect::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
 {
     auto t = (k - r.origin().x()) / r.direction().x();
     if (t < t_min || t > t_max)
@@ -177,7 +174,7 @@ bool yz_rect::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
     rec.t               = t;
     auto outward_normal = vec3(1, 0, 0);
     rec.set_face_normal(r, outward_normal);
-    rec.mat_ptr = mp;
+    rec.mat_ptr = mp.get();
     rec.p       = r.at(t);
 
     return true;

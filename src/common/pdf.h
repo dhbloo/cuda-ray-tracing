@@ -14,7 +14,7 @@
 #include "onb.h"
 #include "rtweekend.h"
 
-inline vec3 random_cosine_direction()
+__device__ inline vec3 random_cosine_direction()
 {
     auto r1 = random_float();
     auto r2 = random_float();
@@ -27,7 +27,7 @@ inline vec3 random_cosine_direction()
     return vec3(x, y, z);
 }
 
-inline vec3 random_to_sphere(float radius, float distance_squared)
+__device__ inline vec3 random_to_sphere(float radius, float distance_squared)
 {
     auto r1 = random_float();
     auto r2 = random_float();
@@ -43,24 +43,27 @@ inline vec3 random_to_sphere(float radius, float distance_squared)
 class pdf
 {
 public:
-    virtual ~pdf() {}
-
-    virtual float value(const vec3 &direction) const = 0;
-    virtual vec3  generate() const                   = 0;
+    __device__ virtual ~pdf() {}
+    __device__ virtual float value(const vec3 &direction) const = 0;
+    __device__ virtual vec3  generate() const                   = 0;
 };
 
 class cosine_pdf : public pdf
 {
 public:
-    cosine_pdf(const vec3 &w) { uvw.build_from_w(w); }
+    __device__ cosine_pdf() {}
+    __device__ cosine_pdf(const vec3 &w) { uvw.build_from_w(w); }
 
-    virtual float value(const vec3 &direction) const override
+    __device__ virtual float value(const vec3 &direction) const override
     {
         auto cosine = dot(unit_vector(direction), uvw.w());
         return (cosine <= 0) ? 0 : cosine / pi;
     }
 
-    virtual vec3 generate() const override { return uvw.local(random_cosine_direction()); }
+    __device__ virtual vec3 generate() const override
+    {
+        return uvw.local(random_cosine_direction());
+    }
 
 public:
     onb uvw;
@@ -69,44 +72,38 @@ public:
 class hittable_pdf : public pdf
 {
 public:
-    hittable_pdf(shared_ptr<hittable> p, const point3 &origin) : ptr(p), o(origin) {}
-
-    virtual float value(const vec3 &direction) const override
+    __device__ hittable_pdf(const hittable &h, const point3 &origin) : h(h), o(origin) {}
+    __device__ virtual float value(const vec3 &direction) const override
     {
-        return ptr->pdf_value(o, direction);
+        return h.pdf_value(o, direction);
     }
-
-    virtual vec3 generate() const override { return ptr->random(o); }
+    __device__ virtual vec3 generate() const override { return h.random(o); }
 
 public:
-    point3               o;
-    shared_ptr<hittable> ptr;
+    point3          o;
+    const hittable &h;
 };
 
 class mixture_pdf : public pdf
 {
 public:
-    mixture_pdf(shared_ptr<pdf> p0, shared_ptr<pdf> p1)
+    __device__ mixture_pdf(const pdf &p0, const pdf &p1) : p0(p0), p1(p1) {}
+
+    __device__ virtual float value(const vec3 &direction) const override
     {
-        p[0] = p0;
-        p[1] = p1;
+        return 0.5f * p0.value(direction) + 0.5f * p1.value(direction);
     }
 
-    virtual float value(const vec3 &direction) const override
-    {
-        return 0.5f * p[0]->value(direction) + 0.5f * p[1]->value(direction);
-    }
-
-    virtual vec3 generate() const override
+    __device__ virtual vec3 generate() const override
     {
         if (random_float() < 0.5)
-            return p[0]->generate();
+            return p0.generate();
         else
-            return p[1]->generate();
+            return p1.generate();
     }
 
 public:
-    shared_ptr<pdf> p[2];
+    const pdf &p0, &p1;
 };
 
 #endif

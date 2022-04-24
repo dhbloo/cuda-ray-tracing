@@ -27,11 +27,11 @@
     #include <omp.h>
 #endif
 
-color ray_radiance(ray                  r,
-                   color                background,
-                   const hittable      &world,
-                   shared_ptr<hittable> lights,
-                   int                  depth)
+color ray_radiance(ray             r,
+                   color           background,
+                   const hittable &world,
+                   const hittable &lights,
+                   int             depth)
 {
     hit_record rec;
     color      accumL, accumR(1.0f, 1.0f, 1.0f);
@@ -56,10 +56,10 @@ color ray_radiance(ray                  r,
             r = srec.specular_ray;
         }
         else {
-            auto        light_ptr = make_shared<hittable_pdf>(lights, rec.p);
-            mixture_pdf p(light_ptr, srec.pdf_ptr);
-            ray         scattered = ray(rec.p, p.generate(), r.time());
-            auto        pdf_val   = p.value(scattered.direction());
+            hittable_pdf light(lights, rec.p);
+            mixture_pdf  p(light, *srec.pdf_ptr);
+            ray          scattered = ray(rec.p, p.generate(), r.time());
+            auto         pdf_val   = p.value(scattered.direction());
 
             accumR = accumR * rec.mat_ptr->scattering_pdf(r, rec, scattered) / pdf_val;
             r      = scattered;
@@ -69,10 +69,8 @@ color ray_radiance(ray                  r,
     return accumL;
 }
 
-hittable_list cornell_box()
+void cornell_box(hittable_list &objects, hittable_list &lights)
 {
-    hittable_list objects;
-
     auto red   = make_shared<lambertian>(color(.65f, .05f, .05f));
     auto white = make_shared<lambertian>(color(.73f, .73f, .73f));
     auto green = make_shared<lambertian>(color(.12f, .45f, .15f));
@@ -94,7 +92,8 @@ hittable_list cornell_box()
     auto glass = make_shared<dielectric>(1.5);
     objects.add(make_shared<sphere>(point3(190, 90, 190), 90, glass));
 
-    return objects;
+    lights.add(make_shared<xz_rect>(213, 343, 227, 332, 554, make_shared<material>()));
+    lights.add(make_shared<sphere>(point3(190, 90, 190), 90, make_shared<material>()));
 }
 
 int main()
@@ -109,11 +108,9 @@ int main()
 
     // World
 
-    auto lights = make_shared<hittable_list>();
-    lights->add(make_shared<xz_rect>(213, 343, 227, 332, 554, shared_ptr<material>()));
-    lights->add(make_shared<sphere>(point3(190, 90, 190), 90, shared_ptr<material>()));
-
-    auto world = cornell_box();
+    hittable_list world;
+    hittable_list lights;
+    cornell_box(world, lights);
 
     color background(0, 0, 0);
 

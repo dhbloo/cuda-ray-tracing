@@ -18,27 +18,29 @@
 
 struct scatter_record
 {
-    ray             specular_ray;
-    bool            is_specular;
-    color           attenuation;
-    shared_ptr<pdf> pdf_ptr;
+    ray        specular_ray;
+    bool       is_specular;
+    color      attenuation;
+    const pdf *pdf_ptr = nullptr;
 };
 
 class material
 {
 public:
-    virtual color
+    virtual color __device__
     emitted(const ray &r_in, const hit_record &rec, float u, float v, const point3 &p) const
     {
         return color(0, 0, 0);
     }
 
-    virtual bool scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const
+    __device__ virtual bool
+    scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const
     {
         return false;
     }
 
-    virtual float scattering_pdf(const ray &r_in, const hit_record &rec, const ray &scattered) const
+    __device__ virtual float
+    scattering_pdf(const ray &r_in, const hit_record &rec, const ray &scattered) const
     {
         return 0;
     }
@@ -47,19 +49,21 @@ public:
 class lambertian : public material
 {
 public:
-    lambertian(const color &a) : albedo(make_shared<solid_color>(a)) {}
-    lambertian(shared_ptr<texture> a) : albedo(a) {}
+    __host__ lambertian(const color &a) : albedo(make_shared<solid_color>(a)) {}
+    __host__ lambertian(shared_ptr<tex> a) : albedo(a) {}
 
-    virtual bool
+    __device__ virtual bool
     scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const override
     {
+        pdf = cosine_pdf(rec.normal);
+
         srec.is_specular = false;
         srec.attenuation = albedo->value(rec.u, rec.v, rec.p);
-        srec.pdf_ptr     = make_shared<cosine_pdf>(rec.normal);
+        srec.pdf_ptr     = &pdf;
         return true;
     }
 
-    float
+    __device__ float
     scattering_pdf(const ray &r_in, const hit_record &rec, const ray &scattered) const override
     {
         auto cosine = dot(rec.normal, unit_vector(scattered.direction()));
@@ -67,15 +71,16 @@ public:
     }
 
 public:
-    shared_ptr<texture> albedo;
+    shared_ptr<tex>    albedo;
+    mutable cosine_pdf pdf;  // used for srec return value in scatter()
 };
 
 class metal : public material
 {
 public:
-    metal(const color &a, float f) : albedo(a), fuzz(f < 1 ? f : 1) {}
+    __host__ metal(const color &a, float f) : albedo(a), fuzz(f < 1 ? f : 1) {}
 
-    virtual bool
+    __device__ virtual bool
     scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const override
     {
         vec3 reflected    = reflect(unit_vector(r_in.direction()), rec.normal);
@@ -94,9 +99,9 @@ public:
 class dielectric : public material
 {
 public:
-    dielectric(float index_of_refraction) : ir(index_of_refraction) {}
+    __host__ dielectric(float index_of_refraction) : ir(index_of_refraction) {}
 
-    virtual bool
+    __device__ virtual bool
     scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const override
     {
         srec.is_specular       = true;
@@ -124,7 +129,7 @@ public:
     float ir;  // Index of Refraction
 
 private:
-    static float reflectance(float cosine, float ref_idx)
+    __device__ static float reflectance(float cosine, float ref_idx)
     {
         // Use Schlick's approximation for reflectance.
         auto r0 = (1 - ref_idx) / (1 + ref_idx);
@@ -136,14 +141,14 @@ private:
 class diffuse_light : public material
 {
 public:
-    diffuse_light(shared_ptr<texture> a) : emit(a) {}
-    diffuse_light(color c) : emit(make_shared<solid_color>(c)) {}
+    __host__ diffuse_light(shared_ptr<tex> a) : emit(a) {}
+    __host__ diffuse_light(color c) : emit(make_shared<solid_color>(c)) {}
 
-    virtual color emitted(const ray        &r_in,
-                          const hit_record &rec,
-                          float             u,
-                          float             v,
-                          const point3     &p) const override
+    __device__ virtual color emitted(const ray        &r_in,
+                                     const hit_record &rec,
+                                     float             u,
+                                     float             v,
+                                     const point3     &p) const override
     {
         if (!rec.front_face)
             return color(0, 0, 0);
@@ -151,14 +156,14 @@ public:
     }
 
 public:
-    shared_ptr<texture> emit;
+    shared_ptr<tex> emit;
 };
 
 class isotropic : public material
 {
 public:
-    isotropic(color c) : albedo(make_shared<solid_color>(c)) {}
-    isotropic(shared_ptr<texture> a) : albedo(a) {}
+    __host__ isotropic(color c) : albedo(make_shared<solid_color>(c)) {}
+    __host__ isotropic(shared_ptr<tex> a) : albedo(a) {}
 
 #if 0
         // Issue #669
@@ -175,7 +180,7 @@ public:
 #endif
 
 public:
-    shared_ptr<texture> albedo;
+    shared_ptr<tex> albedo;
 };
 
 #endif

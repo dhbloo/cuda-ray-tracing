@@ -15,7 +15,7 @@
 
 #include <iostream>
 
-inline color radiance_to_color(color radiance, int samples_per_pixel)
+__dual__ inline color radiance_to_color(color radiance, int samples_per_pixel)
 {
     auto r = radiance.x();
     auto g = radiance.y();

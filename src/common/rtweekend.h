@@ -20,6 +20,9 @@
 
 __device__ float random_float();
 
+using cuda::make_shared;
+using cuda::shared_ptr;
+
 #else
 
     #define __host__
@@ -33,14 +36,11 @@ inline float random_float()
 }
 
 using std::fabs;
+using std::make_shared;
+using std::shared_ptr;
 using std::sqrt;
 
 #endif
-
-// Usings
-
-using std::make_shared;
-using std::shared_ptr;
 
 // Constants
 
@@ -72,7 +72,7 @@ __device__ inline float random_float(float min, float max)
 __device__ inline int random_int(int min, int max)
 {
     // Returns a random integer in [min,max].
-    return static_cast<int>(random_float(min, max + 1));
+    return int(random_float(float(min), float(max + 1)));
 }
 
 // Common Headers

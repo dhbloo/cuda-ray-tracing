@@ -18,15 +18,16 @@
 class sphere : public hittable
 {
 public:
-    sphere() {}
+    __host__ sphere(point3 cen, float r, shared_ptr<material> m)
+        : center(cen)
+        , radius(r)
+        , mat_ptr(m) {};
 
-    sphere(point3 cen, float r, shared_ptr<material> m) : center(cen), radius(r), mat_ptr(m) {};
-
-    virtual bool hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
-
-    virtual bool  bounding_box(float time0, float time1, aabb &output_box) const override;
-    virtual float pdf_value(const point3 &o, const vec3 &v) const override;
-    virtual vec3  random(const point3 &o) const override;
+    __device__ virtual bool
+    hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
+    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override;
+    __device__ virtual float pdf_value(const point3 &o, const vec3 &v) const override;
+    __device__ virtual vec3  random(const point3 &o) const override;
 
 public:
     point3               center;
@@ -34,7 +35,7 @@ public:
     shared_ptr<material> mat_ptr;
 
 private:
-    static void get_sphere_uv(const point3 &p, float &u, float &v)
+    __device__ static void get_sphere_uv(const point3 &p, float &u, float &v)
     {
         // p: a given point on the sphere of radius one, centered at the origin.
         // u: returned value [0,1] of angle around the Y axis from X=-1.
@@ -51,7 +52,7 @@ private:
     }
 };
 
-float sphere::pdf_value(const point3 &o, const vec3 &v) const
+__device__ float sphere::pdf_value(const point3 &o, const vec3 &v) const
 {
     hit_record rec;
     if (!this->hit(ray(o, v), 0.001f, infinity, rec))
@@ -63,7 +64,7 @@ float sphere::pdf_value(const point3 &o, const vec3 &v) const
     return 1 / solid_angle;
 }
 
-vec3 sphere::random(const point3 &o) const
+__device__ vec3 sphere::random(const point3 &o) const
 {
     vec3 direction        = center - o;
     auto distance_squared = direction.length_squared();
@@ -72,13 +73,13 @@ vec3 sphere::random(const point3 &o) const
     return uvw.local(random_to_sphere(radius, distance_squared));
 }
 
-bool sphere::bounding_box(float time0, float time1, aabb &output_box) const
+__dual__ bool sphere::bounding_box(float time0, float time1, aabb &output_box) const
 {
     output_box = aabb(center - vec3(radius, radius, radius), center + vec3(radius, radius, radius));
     return true;
 }
 
-bool sphere::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
+__device__ bool sphere::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
 {
     vec3 oc     = r.origin() - center;
     auto a      = r.direction().length_squared();
@@ -103,7 +104,7 @@ bool sphere::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
     vec3 outward_normal = (rec.p - center) / radius;
     rec.set_face_normal(r, outward_normal);
     get_sphere_uv(outward_normal, rec.u, rec.v);
-    rec.mat_ptr = mat_ptr;
+    rec.mat_ptr = mat_ptr.get();
 
     return true;
 }

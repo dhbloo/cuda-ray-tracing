@@ -12,8 +12,15 @@ set(COMMON_ALL
 	src/common/vec3.h
 	src/common/aabb.h
 	src/common/texture.h
-	src/common/perlin.h
 	src/common/onb.h
+    src/common/aarect.h
+	src/common/box.h
+	src/common/bvh.h
+	src/common/hittable.h
+	src/common/hittable_list.h
+	src/common/material.h
+	src/common/pdf.h
+	src/common/sphere.h
 	src/common/rtw_stb_image.cpp
 	src/common/external/window.h
 	src/common/external/window.cpp
@@ -21,14 +28,7 @@ set(COMMON_ALL
 
 set(SOURCE_CPU
 	${COMMON_ALL}
-	src/cpu/aarect.h
-	src/cpu/box.h
-	src/cpu/bvh.h
-	src/cpu/hittable.h
-	src/cpu/hittable_list.h
-	src/cpu/material.h
-	src/cpu/pdf.h
-	src/cpu/sphere.h
+	
 	src/cpu/main.cc
 )
 

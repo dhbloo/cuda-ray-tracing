@@ -16,18 +16,18 @@
 class ray
 {
 public:
-    ray() {}
-    ray(const point3 &origin, const vec3 &direction, float time = 0.0f)
+    __dual__ ray() {}
+    __dual__ ray(const point3 &origin, const vec3 &direction, float time = 0.0f)
         : orig(origin)
         , dir(direction)
         , tm(time)
     {}
 
-    point3 origin() const { return orig; }
-    vec3   direction() const { return dir; }
-    float  time() const { return tm; }
+    __dual__ point3 origin() const { return orig; }
+    __dual__ vec3   direction() const { return dir; }
+    __dual__ float  time() const { return tm; }
 
-    point3 at(float t) const { return orig + t * dir; }
+    __dual__ point3 at(float t) const { return orig + t * dir; }
 
 public:
     point3 orig;

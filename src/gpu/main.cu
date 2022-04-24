@@ -9,15 +9,17 @@
 // along with this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //==============================================================================================
 
-//#include "aarect.h"
-//#include "box.h"
+#include "cuda_common.h"
+// headers
+#include "aarect.h"
+#include "box.h"
 #include "camera.h"
 #include "color.h"
 #include "external/window.h"
-//#include "hittable_list.h"
-//#include "material.h"
+#include "hittable_list.h"
+#include "material.h"
 #include "rtweekend.h"
-//#include "sphere.h"
+#include "sphere.h"
 
 #include <atomic>
 #include <cuda_runtime.h>
@@ -30,18 +32,72 @@
 
 // ======================================================
 
-// limited version of checkCudaErrors from helper_cuda.h in CUDA examples
-#define checkCudaErrors(val) check_cuda((val), #val, __FILE__, __LINE__)
-
-void check_cuda(cudaError_t result, char const *const func, const char *const file, int const line)
+__device__ color
+ray_radiance(ray r, color background, const hittable &world, const hittable &lights, int depth)
 {
-    if (result) {
-        std::cerr << "CUDA error = " << static_cast<unsigned int>(result) << " at " << file << ":"
-                  << line << " '" << func << "' \n";
-        // Make sure we call CUDA Device Reset before exiting
-        cudaDeviceReset();
-        exit(99);
+    hit_record rec;
+    color      accumL, accumR(1.0f, 1.0f, 1.0f);
+
+    // If we've exceeded the ray bounce limit, no more light is gathered.
+    for (; depth > 0; depth--) {
+        // If the ray hits nothing, return the background color.
+        if (!world.hit(r, 0.001f, infinity, rec)) {
+            accumL += accumR * background;
+            break;
+        }
+
+        return accumL;
+
+        scatter_record srec;
+        accumL += accumR * rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
+
+        if (!rec.mat_ptr->scatter(r, rec, srec))
+            break;
+        else
+            accumR = accumR * srec.attenuation;
+
+        if (srec.is_specular) {
+            r = srec.specular_ray;
+        }
+        else {
+            hittable_pdf light(lights, rec.p);
+            mixture_pdf  p(light, *srec.pdf_ptr);
+            ray          scattered = ray(rec.p, p.generate(), r.time());
+            auto         pdf_val   = p.value(scattered.direction());
+
+            accumR = accumR * rec.mat_ptr->scattering_pdf(r, rec, scattered) / pdf_val;
+            r      = scattered;
+        }
     }
+
+    return accumL;
+}
+
+__host__ void cornell_box(hittable_list &objects, hittable_list &lights)
+{
+    auto red   = make_shared<lambertian>(color(.65f, .05f, .05f));
+    auto white = make_shared<lambertian>(color(.73f, .73f, .73f));
+    auto green = make_shared<lambertian>(color(.12f, .45f, .15f));
+    auto light = make_shared<diffuse_light>(color(15, 15, 15));
+
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 555, green));
+    objects.add(make_shared<yz_rect>(0, 555, 0, 555, 0, red));
+    objects.add(make_shared<flip_face>(make_shared<xz_rect>(213, 343, 227, 332, 554, light)));
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 555, white));
+    objects.add(make_shared<xz_rect>(0, 555, 0, 555, 0, white));
+    objects.add(make_shared<xy_rect>(0, 555, 0, 555, 555, white));
+
+    shared_ptr<material> aluminum = make_shared<metal>(color(0.8f, 0.85f, 0.88f), 0.0f);
+    shared_ptr<hittable> box1 = make_shared<box>(point3(0, 0, 0), point3(165, 330, 165), aluminum);
+    box1                      = make_shared<rotate_y>(box1, 15);
+    box1                      = make_shared<translate>(box1, vec3(265, 0, 295));
+    objects.add(box1);
+
+    auto glass = make_shared<dielectric>(1.5);
+    objects.add(make_shared<sphere>(point3(190, 90, 190), 90, glass));
+
+    lights.add(make_shared<xz_rect>(213, 343, 227, 332, 554, make_shared<material>()));
+    lights.add(make_shared<sphere>(point3(190, 90, 190), 90, make_shared<material>()));
 }
 
 // ======================================================
@@ -81,28 +137,62 @@ __global__ void render_init(int width, int height, curandState *rand_state)
     curand_init(42, id, 0, &rand_state[id]);
 }
 
-__global__ void render(color *fb, int width, int height)
+__global__ void render(color          *fb,
+                       int             width,
+                       int             height,
+                       int             samples_per_pixel,
+                       int             max_depth,
+                       color           background,
+                       const hittable *world,
+                       const hittable *lights)
 {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if (i >= width || j >= height)
         return;
 
-    // fb[j * width + i] = color(float(i) / width, float(j) / height, 0.2f);
-    fb[j * width + i] = color::random();
+    const auto aspect_ratio = static_cast<float>(width) / height;
+
+    point3 lookfrom(278, 278, -800);
+    point3 lookat(278, 278, 0);
+    vec3   vup(0, 1, 0);
+    auto   dist_to_focus = 10.0f;
+    auto   aperture      = 0.001f;
+    auto   vfov          = 40.0f;
+    auto   time0         = 0.0f;
+    auto   time1         = 1.0f;
+
+    camera cam(lookfrom, lookat, vup, vfov, aspect_ratio, aperture, dist_to_focus, time0, time1);
+
+    color radiance(0, 0, 0);
+    for (int s = 0; s < samples_per_pixel; ++s) {
+        auto u = (i + random_float()) / (width - 1);
+        auto v = (j + random_float()) / (height - 1);
+        ray  r = cam.get_ray(u, v);
+        radiance += ray_radiance(r, background, *world, *lights, max_depth);
+    }
+
+    fb[j * width + i] = radiance_to_color(radiance, samples_per_pixel);
 }
 
 int main()
 {
     // Image
 
-    const int  image_width       = 600;
-    const int  image_height      = 600;
-    const int  thread_width      = 8;
-    const int  thread_height     = 8;
-    const auto aspect_ratio      = static_cast<float>(image_width) / image_height;
-    const int  samples_per_pixel = 10;
-    const int  max_depth         = 50;
+    const int image_width       = 600;
+    const int image_height      = 600;
+    const int thread_width      = 8;
+    const int thread_height     = 8;
+    const int samples_per_pixel = 10;
+    const int max_depth         = 1;
+
+    // World
+
+    auto world  = make_shared<hittable_list>();
+    auto lights = make_shared<hittable_list>();
+    cornell_box(*world, *lights);
+
+    color background(0, 0, 0);
 
     // Render Init
 
@@ -125,7 +215,14 @@ int main()
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
-    render<<<blocks, threads>>>(frame_buffer, image_width, image_height);
+    render<<<blocks, threads>>>(frame_buffer,
+                                image_width,
+                                image_height,
+                                samples_per_pixel,
+                                max_depth,
+                                background,
+                                world.get(),
+                                lights.get());
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 

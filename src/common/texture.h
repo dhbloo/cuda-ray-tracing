@@ -12,44 +12,42 @@
 //==============================================================================================
 
 #include "external/stb_image.h"
-#include "perlin.h"
 #include "rtweekend.h"
 
 #include <iostream>
 
-class texture
+class tex
 {
 public:
-    virtual color value(float u, float v, const vec3 &p) const = 0;
+    __device__ virtual color value(float u, float v, const vec3 &p) const = 0;
 };
 
-class solid_color : public texture
+class solid_color : public tex
 {
 public:
-    solid_color() {}
-    solid_color(color c) : color_value(c) {}
-
-    solid_color(float red, float green, float blue) : solid_color(color(red, green, blue)) {}
-
-    virtual color value(float u, float v, const vec3 &p) const override { return color_value; }
+    __host__ solid_color(color c) : color_value(c) {}
+    __host__ solid_color(float red, float green, float blue) : solid_color(color(red, green, blue))
+    {}
+    __device__ virtual color value(float u, float v, const vec3 &p) const override
+    {
+        return color_value;
+    }
 
 private:
     color color_value;
 };
 
-class checker_texture : public texture
+class checker_texture : public tex
 {
 public:
-    checker_texture() {}
-
-    checker_texture(shared_ptr<texture> _even, shared_ptr<texture> _odd) : even(_even), odd(_odd) {}
-
-    checker_texture(color c1, color c2)
+    __host__ checker_texture(shared_ptr<tex> _even, shared_ptr<tex> _odd) : even(_even), odd(_odd)
+    {}
+    __host__ checker_texture(color c1, color c2)
         : even(make_shared<solid_color>(c1))
         , odd(make_shared<solid_color>(c2))
     {}
 
-    virtual color value(float u, float v, const vec3 &p) const override
+    __device__ virtual color value(float u, float v, const vec3 &p) const override
     {
         auto sines = sin(10 * p.x()) * sin(10 * p.y()) * sin(10 * p.z());
         if (sines < 0)
@@ -59,50 +57,39 @@ public:
     }
 
 public:
-    shared_ptr<texture> odd;
-    shared_ptr<texture> even;
+    shared_ptr<tex> odd;
+    shared_ptr<tex> even;
 };
 
-class noise_texture : public texture
-{
-public:
-    noise_texture() {}
-    noise_texture(float sc) : scale(sc) {}
-
-    virtual color value(float u, float v, const vec3 &p) const override
-    {
-        return color(1, 1, 1) * 0.5 * (1 + sin(scale * p.z() + 10 * noise.turb(p)));
-    }
-
-public:
-    perlin noise;
-    float  scale;
-};
-
-class image_texture : public texture
+class image_texture : public tex
 {
 public:
     const static int bytes_per_pixel = 3;
 
-    image_texture() : data(nullptr), width(0), height(0), bytes_per_scanline(0) {}
-
-    image_texture(const char *filename)
+    __host__ image_texture(const char *filename)
     {
         auto components_per_pixel = bytes_per_pixel;
 
-        data = stbi_load(filename, &width, &height, &components_per_pixel, components_per_pixel);
+        unsigned char *buf =
+            stbi_load(filename, &width, &height, &components_per_pixel, components_per_pixel);
 
-        if (!data) {
+        if (!buf) {
             std::cerr << "ERROR: Could not load texture image file '" << filename << "'.\n";
             width = height = 0;
         }
 
         bytes_per_scanline = bytes_per_pixel * width;
+        int total_bytes    = bytes_per_scanline * height;
+
+        data = new unsigned char[total_bytes];
+        memcpy(data, buf, total_bytes);
+
+        free(buf);
     }
 
-    ~image_texture() { free(data); }
+    __host__ ~image_texture() { delete[] data; }
 
-    virtual color value(float u, float v, const vec3 &p) const override
+    __device__ virtual color value(float u, float v, const vec3 &p) const override
     {
         // If we have no texture data, then return solid cyan as a debugging aid.
         if (data == nullptr)
