@@ -18,7 +18,7 @@
 class box : public hittable
 {
 public:
-    __host__ box(const point3 &p0, const point3 &p1, shared_ptr<material> ptr);
+    __device__ box(const point3 &p0, const point3 &p1, shared_ptr<material> ptr);
 
     __device__ virtual bool
     hit(const ray &r, float t_min, float t_max, hit_record &rec) const override
@@ -26,7 +26,7 @@ public:
         return sides.hit(r, t_min, t_max, rec);
     }
 
-    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
+    __device__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
     {
         output_box = aabb(box_min, box_max);
         return true;
@@ -38,7 +38,7 @@ public:
     hittable_list sides;
 };
 
-__host__ box::box(const point3 &p0, const point3 &p1, shared_ptr<material> ptr)
+__device__ box::box(const point3 &p0, const point3 &p1, shared_ptr<material> ptr)
 {
     box_min = p0;
     box_max = p1;

@@ -13,15 +13,13 @@
 #include <cstdlib>
 #include <limits>
 #include <memory>
+#include <type_traits>
 
 #ifdef __NVCC__
 
     #define __dual__ __host__ __device__
 
 __device__ float random_float();
-
-using cuda::make_shared;
-using cuda::shared_ptr;
 
 #else
 
@@ -36,11 +34,64 @@ inline float random_float()
 }
 
 using std::fabs;
-using std::make_shared;
-using std::shared_ptr;
 using std::sqrt;
 
 #endif
+
+template <typename T>
+class shared_ptr
+{
+public:
+    __device__ shared_ptr(T *ptr = nullptr) : p(ptr), ref_count(new size_t) { *ref_count = 1; }
+    template <typename U,
+              typename = typename std::enable_if_t<std::is_convertible<U *, T *>::value>>
+    __device__ shared_ptr(const shared_ptr<U> &sp) : p(sp.p)
+                                                   , ref_count(sp.ref_count)
+    {
+        (*ref_count)++;
+    }
+    __device__ ~shared_ptr() { release(); }
+
+    __device__ shared_ptr &operator=(const shared_ptr &sp)
+    {
+        if (p != sp.p) {
+            release();
+            p         = sp.p;
+            ref_count = sp.ref_count;
+            (*ref_count)++;
+        }
+        return *this;
+    }
+
+    __device__ T *operator->() const noexcept { return p; }
+    __device__ T &operator*() const noexcept { return *p; }
+    __device__    operator bool() const noexcept { return p != nullptr; }
+    __device__ T *get() const noexcept { return p; }
+
+private:
+    template <typename U>
+    friend class shared_ptr;
+
+    T      *p;
+    size_t *ref_count;
+
+    __device__ void release()
+    {
+        /*if (--(*ref_count) == 0) {
+            if (p)
+                delete p;
+            delete ref_count;
+            ref_count = nullptr;
+        }*/
+    }
+};
+
+template <class T, typename... Args>
+__device__ shared_ptr<T> make_shared(Args &&...args)
+{
+    T *ptr = new T(::std::forward<Args>(args)...);
+    return shared_ptr<T>(ptr);
+}
 
 // Constants
 
@@ -72,7 +123,8 @@ __device__ inline float random_float(float min, float max)
 __device__ inline int random_int(int min, int max)
 {
     // Returns a random integer in [min,max].
-    return int(random_float(float(min), float(max + 1)));
+    int x = (int)random_float(float(min), float(max + 1));
+    return x < min ? min : x > max ? max : x;
 }
 
 // Common Headers

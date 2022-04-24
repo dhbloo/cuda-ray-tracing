@@ -37,7 +37,7 @@ class hittable
 {
 public:
     __device__ virtual bool  hit(const ray &r, float t_min, float t_max, hit_record &rec) const = 0;
-    __dual__ virtual bool    bounding_box(float time0, float time1, aabb &output_box) const     = 0;
+    __device__ virtual bool  bounding_box(float time0, float time1, aabb &output_box) const     = 0;
     __device__ virtual float pdf_value(const vec3 &o, const vec3 &v) const { return 0.0; }
     __device__ virtual vec3  random(const vec3 &o) const { return vec3(1, 0, 0); }
 };
@@ -45,7 +45,7 @@ public:
 class flip_face : public hittable
 {
 public:
-    __host__ flip_face(shared_ptr<hittable> p) : ptr(p) {}
+    __device__ flip_face(shared_ptr<hittable> p) : ptr(p) {}
 
     __device__ virtual bool
     hit(const ray &r, float t_min, float t_max, hit_record &rec) const override
@@ -57,7 +57,7 @@ public:
         return true;
     }
 
-    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
+    __device__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
     {
         return ptr->bounding_box(time0, time1, output_box);
     }
@@ -69,7 +69,7 @@ public:
 class translate : public hittable
 {
 public:
-    __host__ translate(shared_ptr<hittable> p, const vec3 &displacement)
+    __device__ translate(shared_ptr<hittable> p, const vec3 &displacement)
         : ptr(p)
         , offset(displacement)
     {}
@@ -77,7 +77,7 @@ public:
     __device__ virtual bool
     hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
 
-    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override;
+    __device__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override;
 
 public:
     shared_ptr<hittable> ptr;
@@ -96,7 +96,7 @@ __device__ bool translate::hit(const ray &r, float t_min, float t_max, hit_recor
     return true;
 }
 
-__dual__ bool translate::bounding_box(float time0, float time1, aabb &output_box) const
+__device__ bool translate::bounding_box(float time0, float time1, aabb &output_box) const
 {
     if (!ptr->bounding_box(time0, time1, output_box))
         return false;
@@ -109,12 +109,12 @@ __dual__ bool translate::bounding_box(float time0, float time1, aabb &output_box
 class rotate_y : public hittable
 {
 public:
-    __host__ rotate_y(shared_ptr<hittable> p, float angle);
+    __device__ rotate_y(shared_ptr<hittable> p, float angle);
 
     __device__ virtual bool
     hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
 
-    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
+    __device__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
     {
         output_box = bbox;
         return hasbox;
@@ -128,7 +128,7 @@ public:
     aabb                 bbox;
 };
 
-__host__ rotate_y::rotate_y(shared_ptr<hittable> p, float angle) : ptr(p)
+__device__ rotate_y::rotate_y(shared_ptr<hittable> p, float angle) : ptr(p)
 {
     auto radians = degrees_to_radians(angle);
     sin_theta    = sin(radians);

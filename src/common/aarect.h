@@ -17,7 +17,8 @@
 class xy_rect : public hittable
 {
 public:
-    __host__ xy_rect(float _x0, float _x1, float _y0, float _y1, float _k, shared_ptr<material> mat)
+    __device__
+    xy_rect(float _x0, float _x1, float _y0, float _y1, float _k, shared_ptr<material> mat)
         : x0(_x0)
         , x1(_x1)
         , y0(_y0)
@@ -28,7 +29,7 @@ public:
     __device__ virtual bool
     hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
 
-    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
+    __device__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
     {
         // The bounding box must have non-zero width in each dimension, so pad the Z
         // dimension a small amount.
@@ -44,7 +45,8 @@ public:
 class xz_rect : public hittable
 {
 public:
-    __host__ xz_rect(float _x0, float _x1, float _z0, float _z1, float _k, shared_ptr<material> mat)
+    __device__
+    xz_rect(float _x0, float _x1, float _z0, float _z1, float _k, shared_ptr<material> mat)
         : x0(_x0)
         , x1(_x1)
         , z0(_z0)
@@ -55,7 +57,7 @@ public:
     __device__ virtual bool
     hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
 
-    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
+    __device__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
     {
         // The bounding box must have non-zero width in each dimension, so pad the Y
         // dimension a small amount.
@@ -90,7 +92,8 @@ public:
 class yz_rect : public hittable
 {
 public:
-    __host__ yz_rect(float _y0, float _y1, float _z0, float _z1, float _k, shared_ptr<material> mat)
+    __device__
+    yz_rect(float _y0, float _y1, float _z0, float _z1, float _k, shared_ptr<material> mat)
         : y0(_y0)
         , y1(_y1)
         , z0(_z0)
@@ -101,7 +104,7 @@ public:
     __device__ virtual bool
     hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
 
-    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
+    __device__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override
     {
         // The bounding box must have non-zero width in each dimension, so pad the X
         // dimension a small amount.

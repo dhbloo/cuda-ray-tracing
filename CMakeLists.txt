@@ -28,7 +28,6 @@ set(COMMON_ALL
 
 set(SOURCE_CPU
 	${COMMON_ALL}
-	
 	src/cpu/main.cc
 )
 

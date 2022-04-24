@@ -9,7 +9,6 @@
 // along with this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //==============================================================================================
 
-#include "cuda_common.h"
 // headers
 #include "aarect.h"
 #include "box.h"
@@ -30,6 +29,22 @@
 #include <iostream>
 #include <thread>
 
+// 一些CUDA辅助函数和宏
+
+// limited version of checkCudaErrors from helper_cuda.h in CUDA examples
+#define checkCudaErrors(val) check_cuda((val), #val, __FILE__, __LINE__)
+
+void check_cuda(cudaError_t result, char const *const func, const char *const file, int const line)
+{
+    if (result) {
+        std::cerr << "CUDA error = " << static_cast<unsigned int>(result) << " at " << file << ":"
+                  << line << " '" << func << "' \n";
+        // Make sure we call CUDA Device Reset before exiting
+        cudaDeviceReset();
+        exit(99);
+    }
+}
+
 // ======================================================
 
 __device__ color
@@ -45,8 +60,6 @@ ray_radiance(ray r, color background, const hittable &world, const hittable &lig
             accumL += accumR * background;
             break;
         }
-
-        return accumL;
 
         scatter_record srec;
         accumL += accumR * rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
@@ -73,7 +86,7 @@ ray_radiance(ray r, color background, const hittable &world, const hittable &lig
     return accumL;
 }
 
-__host__ void cornell_box(hittable_list &objects, hittable_list &lights)
+__device__ void cornell_box(hittable_list &objects, hittable_list &lights)
 {
     auto red   = make_shared<lambertian>(color(.65f, .05f, .05f));
     auto white = make_shared<lambertian>(color(.73f, .73f, .73f));
@@ -121,7 +134,9 @@ __device__ inline float random_float()
 
 // ======================================================
 
-__global__ void render_init(int width, int height, curandState *rand_state)
+// 初始化随机数状态
+
+__global__ void rand_init(int width, int height, curandState *rand_state)
 {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
@@ -137,21 +152,72 @@ __global__ void render_init(int width, int height, curandState *rand_state)
     curand_init(42, id, 0, &rand_state[id]);
 }
 
+// 构造场景
+
+__global__ void setup_secne(hittable_list **scene_ptr)
+{
+    scene_ptr[0] = new hittable_list;
+    scene_ptr[1] = new hittable_list;
+    cornell_box(*scene_ptr[0], *scene_ptr[1]);
+}
+
+// 构造场景
+
+__global__ void cleanup_secne(hittable_list **scene_ptr)
+{
+    delete scene_ptr[0];
+    delete scene_ptr[1];
+}
+
+// 渲染
+
 __global__ void render(color          *fb,
                        int             width,
                        int             height,
                        int             samples_per_pixel,
                        int             max_depth,
                        color           background,
-                       const hittable *world,
-                       const hittable *lights)
+                       camera         *cam,
+                       hittable_list **scene_ptr)
 {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if (i >= width || j >= height)
         return;
 
-    const auto aspect_ratio = static_cast<float>(width) / height;
+    color radiance(0, 0, 0);
+    for (int s = 0; s < samples_per_pixel; ++s) {
+        auto u = (i + random_float()) / (width - 1);
+        auto v = (j + random_float()) / (height - 1);
+        ray  r = cam->get_ray(u, v);
+        radiance += ray_radiance(r, background, *scene_ptr[0], *scene_ptr[1], max_depth);
+    }
+
+    fb[j * width + i] = radiance_to_color(radiance, samples_per_pixel);
+}
+
+int main()
+{
+    // Image
+
+    const int  image_width       = 600;
+    const int  image_height      = 600;
+    const int  thread_width      = 8;
+    const int  thread_height     = 8;
+    const int  samples_per_pixel = 100;
+    const int  max_depth         = 2;
+    const auto aspect_ratio      = static_cast<float>(image_width) / image_height;
+
+    color background(0, 0, 0);
+
+    // World
+
+    hittable_list **scene_ptr;
+    checkCudaErrors(cudaMalloc((void **)&scene_ptr, 2 * sizeof(hittable_list *)));
+
+    setup_secne<<<1, 1>>>(scene_ptr);
+
+    // Camera
 
     point3 lookfrom(278, 278, -800);
     point3 lookat(278, 278, 0);
@@ -162,37 +228,9 @@ __global__ void render(color          *fb,
     auto   time0         = 0.0f;
     auto   time1         = 1.0f;
 
-    camera cam(lookfrom, lookat, vup, vfov, aspect_ratio, aperture, dist_to_focus, time0, time1);
-
-    color radiance(0, 0, 0);
-    for (int s = 0; s < samples_per_pixel; ++s) {
-        auto u = (i + random_float()) / (width - 1);
-        auto v = (j + random_float()) / (height - 1);
-        ray  r = cam.get_ray(u, v);
-        radiance += ray_radiance(r, background, *world, *lights, max_depth);
-    }
-
-    fb[j * width + i] = radiance_to_color(radiance, samples_per_pixel);
-}
-
-int main()
-{
-    // Image
-
-    const int image_width       = 600;
-    const int image_height      = 600;
-    const int thread_width      = 8;
-    const int thread_height     = 8;
-    const int samples_per_pixel = 10;
-    const int max_depth         = 1;
-
-    // World
-
-    auto world  = make_shared<hittable_list>();
-    auto lights = make_shared<hittable_list>();
-    cornell_box(*world, *lights);
-
-    color background(0, 0, 0);
+    camera *cam;
+    checkCudaErrors(cudaMallocManaged((void **)&cam, sizeof(camera)));
+    *cam = camera(lookfrom, lookat, vup, vfov, aspect_ratio, aperture, dist_to_focus, time0, time1);
 
     // Render Init
 
@@ -200,6 +238,7 @@ int main()
     size_t num_pixels = image_width * image_height;
     color *frame_buffer;
     checkCudaErrors(cudaMallocManaged((void **)&frame_buffer, num_pixels * sizeof(color)));
+
     curandState *rand_state;
     checkCudaErrors(cudaMalloc((void **)&rand_state, num_pixels * sizeof(curandState)));
 
@@ -207,7 +246,7 @@ int main()
                 (image_height + thread_height - 1) / thread_height);
     dim3 threads(thread_width, thread_height);
 
-    render_init<<<blocks, threads>>>(image_width, image_height, rand_state);
+    rand_init<<<blocks, threads>>>(image_width, image_height, rand_state);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 
@@ -221,8 +260,8 @@ int main()
                                 samples_per_pixel,
                                 max_depth,
                                 background,
-                                world.get(),
-                                lights.get());
+                                cam,
+                                scene_ptr);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 
@@ -249,6 +288,10 @@ int main()
 
     // Cleanup
 
+    cleanup_secne<<<1, 1>>>(scene_ptr);
+
+    checkCudaErrors(cudaFree(scene_ptr));
+    checkCudaErrors(cudaFree(cam));
     checkCudaErrors(cudaFree(frame_buffer));
     checkCudaErrors(cudaFree(rand_state));
 }

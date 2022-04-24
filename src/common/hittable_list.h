@@ -20,33 +20,55 @@
 class hittable_list : public hittable
 {
 public:
-    __host__ hittable_list() { clear(); };
-    __host__ hittable_list(shared_ptr<hittable> object) { add(object); }
+    __device__ hittable_list() : objects(nullptr) { clear(); };
+    __device__ ~hittable_list()
+    {
+        if (objects)
+            delete[] objects;
+    }
 
-    __host__ void clear()
-    {
-        objects.clear();
-        begin_ = end_ = objects.data();
-    }
-    __host__ void add(shared_ptr<hittable> object)
-    {
-        objects.push_back(object);
-        begin_ = objects.data();
-        end_   = objects.data() + objects.size();
-    }
-    __dual__ size_t size() const { return end_ - begin_; }
+    __device__ void clear();
+    __device__ void add(shared_ptr<hittable> object);
 
     __device__ virtual bool
     hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
-    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override;
+    __device__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override;
     __device__ virtual float pdf_value(const vec3 &o, const vec3 &v) const override;
     __device__ virtual vec3  random(const vec3 &o) const override;
 
 public:
-    std::vector<shared_ptr<hittable>> objects;
-    shared_ptr<hittable>             *begin_;
-    shared_ptr<hittable>             *end_;
+    shared_ptr<hittable> *objects;
+    size_t                size;
+    size_t                capacity;
+
+    __device__ shared_ptr<hittable> *begin() const { return objects; }
+    __device__ shared_ptr<hittable> *end() const { return objects + size; }
 };
+
+__device__ void hittable_list::clear()
+{
+    if (objects)
+        delete[] objects;
+    capacity = 16;
+    size     = 0;
+    objects  = new shared_ptr<hittable>[capacity];
+}
+
+__device__ void hittable_list::add(shared_ptr<hittable> object)
+{
+    if (size >= capacity) {
+        capacity         = 2 * capacity;
+        auto new_objects = new shared_ptr<hittable>[capacity];
+        for (int i = 0; i < size; i++) {
+            new_objects[i] = objects[i];
+        }
+        delete[] objects;
+        objects = new_objects;
+    }
+
+    objects[size] = object;
+    size++;
+}
 
 __device__ bool hittable_list::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
 {
@@ -54,8 +76,7 @@ __device__ bool hittable_list::hit(const ray &r, float t_min, float t_max, hit_r
     auto       hit_anything   = false;
     auto       closest_so_far = t_max;
 
-    for (auto object_ptr = begin_; object_ptr != end_; object_ptr++) {
-        const auto &object = *object_ptr;
+    for (const auto &object : *this) {
         if (object->hit(r, t_min, closest_so_far, temp_rec)) {
             hit_anything   = true;
             closest_so_far = temp_rec.t;
@@ -66,16 +87,15 @@ __device__ bool hittable_list::hit(const ray &r, float t_min, float t_max, hit_r
     return hit_anything;
 }
 
-__dual__ bool hittable_list::bounding_box(float time0, float time1, aabb &output_box) const
+__device__ bool hittable_list::bounding_box(float time0, float time1, aabb &output_box) const
 {
-    if (size() == 0)
+    if (size == 0)
         return false;
 
     aabb temp_box;
     bool first_box = true;
 
-    for (auto object_ptr = begin_; object_ptr != end_; object_ptr++) {
-        const auto &object = *object_ptr;
+    for (const auto &object : *this) {
         if (!object->bounding_box(time0, time1, temp_box))
             return false;
         output_box = first_box ? temp_box : surrounding_box(output_box, temp_box);
@@ -87,11 +107,10 @@ __dual__ bool hittable_list::bounding_box(float time0, float time1, aabb &output
 
 __device__ float hittable_list::pdf_value(const point3 &o, const vec3 &v) const
 {
-    auto weight = 1.0f / size();
+    auto weight = 1.0f / size;
     auto sum    = 0.0f;
 
-    for (auto object_ptr = begin_; object_ptr != end_; object_ptr++) {
-        const auto &object = *object_ptr;
+    for (const auto &object : *this) {
         sum += weight * object->pdf_value(o, v);
     }
 
@@ -100,7 +119,11 @@ __device__ float hittable_list::pdf_value(const point3 &o, const vec3 &v) const
 
 __device__ vec3 hittable_list::random(const vec3 &o) const
 {
-    return begin_[random_int(0, static_cast<int>(size()) - 1)]->random(o);
+    if (size == 0)
+        return vec3();
+
+    int index = random_int(0, static_cast<int>(size) - 1);
+    return objects[index]->random(o);
 }
 
 #endif

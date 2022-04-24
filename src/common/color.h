@@ -23,11 +23,11 @@ __dual__ inline color radiance_to_color(color radiance, int samples_per_pixel)
 
     // Replace NaN components with zero. See explanation in Ray Tracing: The Rest of Your Life.
     if (r != r)
-        r = 0.0;
+        r = 1.0;
     if (g != g)
-        g = 0.0;
+        g = 1.0;
     if (b != b)
-        b = 0.0;
+        b = 1.0;
 
     // Divide the color by the number of samples and gamma-correct for gamma=2.0.
     auto scale = 1.0f / samples_per_pixel;

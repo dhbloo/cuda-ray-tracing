@@ -49,8 +49,8 @@ public:
 class lambertian : public material
 {
 public:
-    __host__ lambertian(const color &a) : albedo(make_shared<solid_color>(a)) {}
-    __host__ lambertian(shared_ptr<tex> a) : albedo(a) {}
+    __device__ lambertian(const color &a) : albedo(make_shared<solid_color>(a)) {}
+    __device__ lambertian(shared_ptr<tex> a) : albedo(a) {}
 
     __device__ virtual bool
     scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const override
@@ -78,7 +78,7 @@ public:
 class metal : public material
 {
 public:
-    __host__ metal(const color &a, float f) : albedo(a), fuzz(f < 1 ? f : 1) {}
+    __device__ metal(const color &a, float f) : albedo(a), fuzz(f < 1 ? f : 1) {}
 
     __device__ virtual bool
     scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const override
@@ -99,7 +99,7 @@ public:
 class dielectric : public material
 {
 public:
-    __host__ dielectric(float index_of_refraction) : ir(index_of_refraction) {}
+    __device__ dielectric(float index_of_refraction) : ir(index_of_refraction) {}
 
     __device__ virtual bool
     scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const override
@@ -141,8 +141,8 @@ private:
 class diffuse_light : public material
 {
 public:
-    __host__ diffuse_light(shared_ptr<tex> a) : emit(a) {}
-    __host__ diffuse_light(color c) : emit(make_shared<solid_color>(c)) {}
+    __device__ diffuse_light(shared_ptr<tex> a) : emit(a) {}
+    __device__ diffuse_light(color c) : emit(make_shared<solid_color>(c)) {}
 
     __device__ virtual color emitted(const ray        &r_in,
                                      const hit_record &rec,
@@ -162,8 +162,8 @@ public:
 class isotropic : public material
 {
 public:
-    __host__ isotropic(color c) : albedo(make_shared<solid_color>(c)) {}
-    __host__ isotropic(shared_ptr<tex> a) : albedo(a) {}
+    __device__ isotropic(color c) : albedo(make_shared<solid_color>(c)) {}
+    __device__ isotropic(shared_ptr<tex> a) : albedo(a) {}
 
 #if 0
         // Issue #669

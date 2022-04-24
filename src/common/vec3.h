@@ -55,7 +55,7 @@ public:
     __dual__ bool near_zero() const
     {
         // Return true if the vector is close to zero in all dimensions.
-        const auto s = 1e-8;
+        const float s = 1e-7f;
         return (fabs(e[0]) < s) && (fabs(e[1]) < s) && (fabs(e[2]) < s);
     }
 

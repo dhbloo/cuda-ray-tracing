@@ -25,8 +25,9 @@ public:
 class solid_color : public tex
 {
 public:
-    __host__ solid_color(color c) : color_value(c) {}
-    __host__ solid_color(float red, float green, float blue) : solid_color(color(red, green, blue))
+    __device__ solid_color(color c) : color_value(c) {}
+    __device__ solid_color(float red, float green, float blue)
+        : solid_color(color(red, green, blue))
     {}
     __device__ virtual color value(float u, float v, const vec3 &p) const override
     {
@@ -40,9 +41,9 @@ private:
 class checker_texture : public tex
 {
 public:
-    __host__ checker_texture(shared_ptr<tex> _even, shared_ptr<tex> _odd) : even(_even), odd(_odd)
+    __device__ checker_texture(shared_ptr<tex> _even, shared_ptr<tex> _odd) : even(_even), odd(_odd)
     {}
-    __host__ checker_texture(color c1, color c2)
+    __device__ checker_texture(color c1, color c2)
         : even(make_shared<solid_color>(c1))
         , odd(make_shared<solid_color>(c2))
     {}
@@ -61,6 +62,7 @@ public:
     shared_ptr<tex> even;
 };
 
+/*
 class image_texture : public tex
 {
 public:
@@ -119,5 +121,6 @@ private:
     int            width, height;
     int            bytes_per_scanline;
 };
+*/
 
 #endif

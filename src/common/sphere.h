@@ -18,14 +18,14 @@
 class sphere : public hittable
 {
 public:
-    __host__ sphere(point3 cen, float r, shared_ptr<material> m)
+    __device__ sphere(point3 cen, float r, shared_ptr<material> m)
         : center(cen)
         , radius(r)
         , mat_ptr(m) {};
 
     __device__ virtual bool
     hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
-    __dual__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override;
+    __device__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override;
     __device__ virtual float pdf_value(const point3 &o, const vec3 &v) const override;
     __device__ virtual vec3  random(const point3 &o) const override;
 
@@ -73,7 +73,7 @@ __device__ vec3 sphere::random(const point3 &o) const
     return uvw.local(random_to_sphere(radius, distance_squared));
 }
 
-__dual__ bool sphere::bounding_box(float time0, float time1, aabb &output_box) const
+__device__ bool sphere::bounding_box(float time0, float time1, aabb &output_box) const
 {
     output_box = aabb(center - vec3(radius, radius, radius), center + vec3(radius, radius, radius));
     return true;
