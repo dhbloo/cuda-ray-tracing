@@ -79,7 +79,7 @@ __global__ void rand_init(int width, int height, curandState *rand_state)
         rand_width     = width;
         rand_height    = height;
     }
-    curand_init(42, id, 0, &rand_state[id]);
+    curand_init(42 + id, 0, 0, &rand_state[id]);
 }
 
 // 构造场景
@@ -134,7 +134,7 @@ int main()
     const int  thread_width      = 32;
     const int  thread_height     = 16;
     const int  samples_per_pixel = 1000;
-    const int  max_depth         = 6;
+    const int  max_depth         = 5;
     const auto aspect_ratio      = static_cast<float>(image_width) / image_height;
 
     // World
