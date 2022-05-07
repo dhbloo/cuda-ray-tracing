@@ -42,7 +42,11 @@ template <typename T>
 class shared_ptr
 {
 public:
-    __device__ shared_ptr(T *ptr = nullptr) : p(ptr), ref_count(new size_t) { *ref_count = 1; }
+    __device__ shared_ptr(T *ptr = nullptr) : p(ptr), ref_count(new size_t(1)) {}
+    __device__ shared_ptr(const shared_ptr &sp) : p(sp.p), ref_count(sp.ref_count)
+    {
+        (*ref_count)++;
+    }
     template <typename U,
               typename = typename std::enable_if_t<std::is_convertible<U *, T *>::value>>
     __device__ shared_ptr(const shared_ptr<U> &sp) : p(sp.p)
@@ -50,16 +54,20 @@ public:
     {
         (*ref_count)++;
     }
-    __device__ ~shared_ptr() { release(); }
+    __device__ ~shared_ptr()
+    {
+        if (ref_count)
+            release();
+    }
 
     __device__ shared_ptr &operator=(const shared_ptr &sp)
     {
-        if (p != sp.p) {
+        if (ref_count)
             release();
-            p         = sp.p;
-            ref_count = sp.ref_count;
-            (*ref_count)++;
-        }
+
+        p         = sp.p;
+        ref_count = sp.ref_count;
+        (*ref_count)++;
         return *this;
     }
 
@@ -77,12 +85,13 @@ private:
 
     __device__ void release()
     {
-        /*if (--(*ref_count) == 0) {
+        (*ref_count)--;
+        if (*ref_count == 0) {
             if (p)
                 delete p;
             delete ref_count;
             ref_count = nullptr;
-        }*/
+        }
     }
 };
 
