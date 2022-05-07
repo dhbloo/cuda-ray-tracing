@@ -17,22 +17,19 @@ class ray
 {
 public:
     __dual__ ray() {}
-    __dual__ ray(const point3 &origin, const vec3 &direction, float time = 0.0f)
+    __dual__ ray(const point3 &origin, const vec3 &direction)
         : orig(origin)
         , dir(direction)
-        , tm(time)
     {}
 
     __dual__ point3 origin() const { return orig; }
     __dual__ vec3   direction() const { return dir; }
-    __dual__ float  time() const { return tm; }
 
     __dual__ point3 at(float t) const { return orig + t * dir; }
 
 public:
     point3 orig;
     vec3   dir;
-    float  tm;
 };
 
 #endif

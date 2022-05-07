@@ -86,7 +86,7 @@ public:
 
 __device__ bool translate::hit(const ray &r, float t_min, float t_max, hit_record &rec) const
 {
-    ray moved_r(r.origin() - offset, r.direction(), r.time());
+    ray moved_r(r.origin() - offset, r.direction());
     if (!ptr->hit(moved_r, t_min, t_max, rec))
         return false;
 
@@ -172,7 +172,7 @@ __device__ bool rotate_y::hit(const ray &r, float t_min, float t_max, hit_record
     direction[0] = cos_theta * r.direction()[0] - sin_theta * r.direction()[2];
     direction[2] = sin_theta * r.direction()[0] + cos_theta * r.direction()[2];
 
-    ray rotated_r(origin, direction, r.time());
+    ray rotated_r(origin, direction);
 
     if (!ptr->hit(rotated_r, t_min, t_max, rec))
         return false;

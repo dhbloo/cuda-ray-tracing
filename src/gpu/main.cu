@@ -13,7 +13,7 @@
 #include "color.h"
 #include "hittable_list.h"
 #include "rtweekend.h"
-#include "tracing.h"
+#include "scene.h"
 
 // window
 #include "external/window.h"
@@ -101,28 +101,65 @@ __global__ void cleanup_secne(hittable_list **scene_ptr)
 
 // 渲染
 
-__global__ void render(color          *fb,
-                       int             width,
-                       int             height,
-                       int             samples_per_pixel,
-                       int             max_depth,
-                       camera         *cam,
-                       hittable_list **scene_ptr)
+__global__ void ray_radiance(color          *fb,
+                             int             width,
+                             int             height,
+                             int             samples_per_pixel,
+                             int             max_depth,
+                             camera         *cam,
+                             hittable_list **scene_ptr)
 {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if (i >= width || j >= height)
         return;
 
-    color radiance(0, 0, 0);
+    const hittable &world  = *scene_ptr[0];
+    const hittable &lights = *scene_ptr[1];
+
+    color          radiance(0, 0, 0);
+    hit_record     rec;
+    scatter_record srec;
+    color          accumL, accumR;
+    ray            r;
+
     for (int s = 0; s < samples_per_pixel; ++s) {
-        auto u = (i + random_float()) / (width - 1);
-        auto v = (j + random_float()) / (height - 1);
-        ray  r = cam->get_ray(u, v);
-        radiance += ray_radiance(r, *scene_ptr[0], *scene_ptr[1], max_depth);
+        r      = cam->get_ray(i, j, width, height);
+        accumL = color();
+        accumR = color(1.0f, 1.0f, 1.0f);
+
+        for (int depth = 0; depth < max_depth; depth++) {
+            // If the ray hits nothing, return the background color.
+            if (!world.hit(r, 0.001f, infinity, rec)) {
+                accumL += accumR * background_radiance(r);
+                break;
+            }
+
+            accumL += accumR * rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
+
+            if (!rec.mat_ptr->scatter(r, rec, srec))
+                break;
+
+            accumR = accumR * srec.attenuation;
+
+            if (srec.is_specular) {
+                r = srec.specular_ray;
+            }
+            else {
+                hittable_pdf light(lights, rec.p);
+                mixture_pdf  p(light, *srec.pdf_ptr);
+                ray          scattered = ray(rec.p, p.generate());
+                auto         pdf_val   = p.value(scattered.direction());
+
+                accumR *= rec.mat_ptr->scattering_pdf(r, rec, scattered) / pdf_val;
+                r = scattered;
+            }
+        }
+
+        radiance += accumL;
     }
 
-    fb[j * width + i] = radiance_to_color(radiance, samples_per_pixel);
+    fb[j * width + i] = radiance;
 }
 
 int main()
@@ -133,7 +170,7 @@ int main()
     const int  image_height      = 800;
     const int  thread_width      = 32;
     const int  thread_height     = 16;
-    const int  samples_per_pixel = 1000;
+    const int  samples_per_pixel = 200;
     const int  max_depth         = 5;
     const auto aspect_ratio      = static_cast<float>(image_width) / image_height;
 
@@ -181,13 +218,13 @@ int main()
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
-    render<<<blocks, threads>>>(frame_buffer,
-                                image_width,
-                                image_height,
-                                samples_per_pixel,
-                                max_depth,
-                                cam,
-                                scene_ptr);
+    ray_radiance<<<blocks, threads>>>(frame_buffer,
+                                      image_width,
+                                      image_height,
+                                      samples_per_pixel,
+                                      max_depth,
+                                      cam,
+                                      scene_ptr);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 
@@ -201,8 +238,9 @@ int main()
     // Copy frame buffer to window
     for (int j = image_height - 1; j >= 0; --j) {
         for (int i = 0; i < image_width; ++i) {
-            size_t pixel_index               = j * image_width + i;
-            *window(i, image_height - 1 - j) = color_to_rgb_integer(frame_buffer[pixel_index]);
+            size_t pixel_index = j * image_width + i;
+            color  c           = radiance_to_color(frame_buffer[pixel_index], samples_per_pixel);
+            *window(i, image_height - 1 - j) = color_to_rgb_integer(c);
         }
     }
 

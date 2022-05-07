@@ -30,44 +30,6 @@ __device__ color background_radiance(ray r)
     // return c;
 }
 
-__device__ color ray_radiance(ray r, const hittable &world, const hittable &lights, int depth)
-{
-    hit_record rec;
-    color      accumL, accumR(1.0f, 1.0f, 1.0f);
-
-    // If we've exceeded the ray bounce limit, no more light is gathered.
-    for (; depth > 0; depth--) {
-        // If the ray hits nothing, return the background color.
-        if (!world.hit(r, 0.001f, infinity, rec)) {
-            accumL += accumR * background_radiance(r);
-            break;
-        }
-
-        scatter_record srec;
-        accumL += accumR * rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
-
-        if (!rec.mat_ptr->scatter(r, rec, srec))
-            break;
-        else
-            accumR = accumR * srec.attenuation;
-
-        if (srec.is_specular) {
-            r = srec.specular_ray;
-        }
-        else {
-            hittable_pdf light(lights, rec.p);
-            mixture_pdf  p(light, *srec.pdf_ptr);
-            ray          scattered = ray(rec.p, p.generate(), r.time());
-            auto         pdf_val   = p.value(scattered.direction());
-
-            accumR = accumR * rec.mat_ptr->scattering_pdf(r, rec, scattered) / pdf_val;
-            r      = scattered;
-        }
-    }
-
-    return accumL;
-}
-
 __device__ void cornell_box(hittable_list &objects, hittable_list &lights)
 {
     auto red   = make_shared<lambertian>(color(.65f, .05f, .05f));
@@ -90,23 +52,24 @@ __device__ void cornell_box(hittable_list &objects, hittable_list &lights)
     box1                      = make_shared<translate>(box1, vec3(265, 0, 295));
     objects.add(box1);
 
-    auto glass      = make_shared<dielectric>(1.5);
-    auto glass_ball = make_shared<sphere>(point3(190, 90, 190), 90, glass);
-    objects.add(glass_ball);
+    auto glass = make_shared<dielectric>(1.5);
+    auto ball  = make_shared<sphere>(point3(190, 90, 190), 90, glass);
+    objects.add(ball);
 
-    auto ss_ball = make_shared<sphere>(point3(420, 60, 120), 60, glass);
+    /*auto ss_ball = make_shared<sphere>(point3(420, 60, 120), 60, glass);
     objects.add(ss_ball);
     objects.add(
-        make_shared<constant_medium>(ss_ball, 0.015f, make_shared<solid_color>(0.2f, 0.4f, 0.9f)));
+        make_shared<constant_medium>(ss_ball, 0.015f, make_shared<solid_color>(0.2f, 0.4f,
+    0.9f)));*/
 
-    //auto boundary =
-    //    make_shared<box>(point3(0, 400, 0), point3(555, 555, 555), make_shared<material>());
-    //auto fog = make_shared<constant_medium>(boundary, 0.0006f, make_shared<solid_color>(1, 1, 1));
-    //objects.add(fog);
+    // auto boundary =
+    //     make_shared<box>(point3(0, 400, 0), point3(555, 555, 555), make_shared<material>());
+    // auto fog = make_shared<constant_medium>(boundary, 0.0006f, make_shared<solid_color>(1, 1,
+    // 1)); objects.add(fog);
 
     lights.add(top_light);
-    lights.add(glass_ball);
-    lights.add(ss_ball);
+    lights.add(ball);
+    // lights.add(ss_ball);
 }
 
 #endif
