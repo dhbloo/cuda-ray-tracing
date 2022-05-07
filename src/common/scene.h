@@ -55,15 +55,8 @@ __device__ void cornell_box(hittable_list &objects, hittable_list &lights)
     auto ball  = make_shared<sphere>(point3(190, 90, 190), 90, glass);
     objects.add(ball);
 
-    /*auto ss_ball = make_shared<sphere>(point3(420, 60, 120), 60, glass);
-    objects.add(ss_ball);
-    objects.add(
-        make_shared<constant_medium>(ss_ball, 0.015f, make_shared<solid_color>(0.2f, 0.4f,
-    0.9f)));*/
-
     lights.add(top_light);
     lights.add(ball);
-    // lights.add(ss_ball);
 }
 
 #endif
