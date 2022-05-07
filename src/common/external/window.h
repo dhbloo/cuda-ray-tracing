@@ -2,6 +2,7 @@
 
 #include <tchar.h>
 #include <unordered_map>
+#define NOMINMAX
 #include <windows.h>
 
 class Window
@@ -10,11 +11,11 @@ private:
     bool           screen_running = false;
     int            screen_w, screen_h;
     int            screen_mx = 0, screen_my = 0, screen_mb = 0;
-    int            screen_keys[512];         // µ±Ç°¼üÅÌ°´ÏÂ×´Ì¬
-    HWND           screen_handle = nullptr;  // Ö÷´°¿Ú HWND
-    HDC            screen_dc     = nullptr;  // ÅäÌ×µÄ HDC
+    int            screen_keys[512];         // å½“å‰é”®ç›˜æŒ‰ä¸‹çŠ¶æ€
+    HWND           screen_handle = nullptr;  // ä¸»çª—å£ HWND
+    HDC            screen_dc     = nullptr;  // é…å¥—çš„ HDC
     HBITMAP        screen_hb     = nullptr;  // DIB
-    HBITMAP        screen_ob     = nullptr;  // ÀÏµÄ BITMAP
+    HBITMAP        screen_ob     = nullptr;  // è€çš„ BITMAP
     unsigned char *screen_fb     = nullptr;  // frame buffer
     long           screen_pitch  = 0;
     int            current_fps   = 0;
@@ -27,20 +28,20 @@ private:
     void update_fps();
 
 public:
-    Window(int w, int h, const TCHAR *title);  // ÆÁÄ»³õÊ¼»¯
-    ~Window();                                 // ¹Ø±ÕÆÁÄ»
+    Window(int w, int h, const TCHAR *title);  // å±å¹•åˆå§‹åŒ–
+    ~Window();                                 // å…³é—­å±å¹•
 
     int  width() const { return screen_w; };
     int  height() const { return screen_h; };
     bool is_run() { return screen_running; }
     bool is_key(unsigned int code) { return code >= 512 ? false : screen_keys[code]; }
     int  get_fps() { return current_fps; }
-    void dispatch();  // ´¦ÀíÏûÏ¢
-    void update();    // ÏÔÊ¾ FrameBuffer
-    void destory();   // Ïú»Ù
+    void dispatch();  // å¤„ç†æ¶ˆæ¯
+    void update();    // æ˜¾ç¤º FrameBuffer
+    void destory();   // é”€æ¯
     bool set_title(const TCHAR *title);
 
-    // ·µ»ØFrameBufferÄ³¸öPixelµÄInt32µÚÒ»¸öÑÕÉ«Ö¸Õë(Ã¿¸öpixelËÄ×Ö½Ú¶ÔÆë)
+    // è¿”å›FrameBufferæŸä¸ªPixelçš„Int32ç¬¬ä¸€ä¸ªé¢œè‰²æŒ‡é’ˆ(æ¯ä¸ªpixelå››å­—èŠ‚å¯¹é½)
     int *operator()(unsigned int index = 0);
     int *operator()(int x, int y);
 };

@@ -73,68 +73,172 @@ __global__ void cleanup_secne(hittable_list **scene_ptr)
 
 // 渲染
 
-__global__ void ray_radiance(color          *fb,
-                             int             width,
-                             int             height,
-                             int             samples_per_pixel,
-                             int             max_depth,
-                             camera         *cam,
-                             hittable_list **scene_ptr)
+struct sample
+{
+    color radiance;
+    int   num_samples;
+};
+
+struct pixel_data
+{
+    int         x, y;
+    int         depth;
+    curandState rand_state;
+    ray         r;
+    color       accumL, accumR;
+    hit_record  rec;
+};
+
+__global__ void
+init_pixel_data(pixel_data *pixel_buffer, sample *frame_buffer, int width, int height)
+
 {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     if (i >= width || j >= height)
         return;
 
-    curandState rand_state;
-    curand_init(42 + j * width + i, 0, 0, &rand_state);
+    int id           = j * width + i;
+    frame_buffer[id] = {color(), 0};
 
-    const hittable &world  = *scene_ptr[0];
-    const hittable &lights = *scene_ptr[1];
+    pixel_data &pd = pixel_buffer[id];
+    pd.x           = i;
+    pd.y           = j;
+    pd.depth       = 0;
+    curand_init(42 + id, 0, 0, &pd.rand_state);
+}
 
-    color          radiance(0, 0, 0);
-    hit_record     rec;
+__global__ void generate_rays(pixel_data *pixel_buffer,
+                              sample     *frame_buffer,
+                              int         num_pixels,
+                              int         width,
+                              int         height,
+                              int         max_depth,
+                              camera     *cam)
+{
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx >= num_pixels)
+        return;
+
+    pixel_data pd = pixel_buffer[idx];
+
+    if (pd.depth <= 0) {
+        float u = (pd.x + random_float(&pd.rand_state)) / (width - 1);
+        float v = (pd.y + random_float(&pd.rand_state)) / (height - 1);
+
+        sample &s = frame_buffer[pd.y * width + pd.x];
+        s.radiance += pd.accumL;
+        s.num_samples++;
+
+        pd.r      = cam->get_ray(&pd.rand_state, u, v);
+        pd.accumL = color();
+        pd.accumR = color(1.0f, 1.0f, 1.0f);
+        pd.depth  = max_depth;
+
+        pixel_buffer[idx] = pd;
+    }
+}
+
+__global__ void hit_world(pixel_data *pixel_buffer, int num_pixels, hittable_list **scene)
+{
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx >= num_pixels)
+        return;
+
+    pixel_data &pd = pixel_buffer[idx];
+    hit_record  hit_rec;
+
+    if (scene[0]->hit(pd.r, 0.001f, infinity, hit_rec)) {
+        pd.rec = hit_rec;
+    }
+    else {
+        pd.accumL += pd.accumR * background_radiance(pd.r);
+        pd.depth = 0;
+    }
+}
+
+__global__ void scatter(pixel_data *pixel_buffer, int num_pixels, hittable_list **scene)
+{
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx >= num_pixels)
+        return;
+
+    pixel_data    &pd = pixel_buffer[idx];
     scatter_record srec;
-    color          accumL, accumR;
-    ray            r;
 
-    for (int s = 0; s < samples_per_pixel; ++s) {
-        r      = cam->get_ray(&rand_state, i, j, width, height);
-        accumL = color();
-        accumR = color(1.0f, 1.0f, 1.0f);
+    if (pd.depth <= 0)
+        return;
 
-        for (int depth = 0; depth < max_depth; depth++) {
-            // If the ray hits nothing, return the background color.
-            if (!world.hit(r, 0.001f, infinity, rec)) {
-                accumL += accumR * background_radiance(r);
-                break;
-            }
+    pd.accumL += pd.accumR * pd.rec.mat_ptr->emitted(pd.r, pd.rec, pd.rec.u, pd.rec.v, pd.rec.p);
 
-            accumL += accumR * rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
+    if (!pd.rec.mat_ptr->scatter(pd.r, pd.rec, srec, &pd.rand_state)) {
+        pd.depth = 0;
+    }
+    else {
+        pd.accumR = pd.accumR * srec.attenuation;
 
-            if (!rec.mat_ptr->scatter(r, rec, srec, &rand_state))
-                break;
+        if (srec.is_specular) {
+            pd.r = srec.specular_ray;
+        }
+        else {
+            hittable_pdf light(*scene[1], pd.rec.p);
+            mixture_pdf  p(light, *srec.pdf_ptr);
+            ray          scattered = ray(pd.rec.p, p.generate(&pd.rand_state));
+            auto         pdf_val   = p.value(scattered.direction());
 
-            accumR = accumR * srec.attenuation;
-
-            if (srec.is_specular) {
-                r = srec.specular_ray;
-            }
-            else {
-                hittable_pdf light(lights, rec.p);
-                mixture_pdf  p(light, *srec.pdf_ptr);
-                ray          scattered = ray(rec.p, p.generate(&rand_state));
-                auto         pdf_val   = p.value(scattered.direction());
-
-                accumR *= rec.mat_ptr->scattering_pdf(r, rec, scattered, &rand_state) / pdf_val;
-                r = scattered;
-            }
+            pd.accumR *=
+                pd.rec.mat_ptr->scattering_pdf(pd.r, pd.rec, scattered, &pd.rand_state) / pdf_val;
+            pd.r = scattered;
         }
 
-        radiance += accumL;
+        pd.depth--;
+    }
+}
+
+void render(pixel_data     *pixel_buffer,
+            sample         *frame_buffer,
+            int             width,
+            int             height,
+            int             samples_per_pixel,
+            int             max_depth,
+            camera         *cam,
+            hittable_list **scene)
+{
+    const int num_pixels = width * height;
+    const int threads    = 512;
+    const int blocks     = (num_pixels + threads - 1) / threads;
+
+    for (int i = 0; i < samples_per_pixel; i++) {
+        generate_rays<<<blocks, threads>>>(pixel_buffer,
+                                           frame_buffer,
+                                           num_pixels,
+                                           width,
+                                           height,
+                                           max_depth,
+                                           cam);
+        checkCudaErrors(cudaGetLastError());
+        checkCudaErrors(cudaDeviceSynchronize());
+
+        hit_world<<<blocks, threads>>>(pixel_buffer, num_pixels, scene);
+        checkCudaErrors(cudaGetLastError());
+        checkCudaErrors(cudaDeviceSynchronize());
+
+        scatter<<<blocks, threads>>>(pixel_buffer, num_pixels, scene);
+        checkCudaErrors(cudaGetLastError());
+        checkCudaErrors(cudaDeviceSynchronize());
     }
 
-    fb[j * width + i] = radiance;
+    // accumulate colors back to frame buffer for completed rays
+
+    generate_rays<<<blocks, threads>>>(pixel_buffer,
+                                       frame_buffer,
+                                       num_pixels,
+                                       width,
+                                       height,
+                                       max_depth,
+                                       cam);
+    checkCudaErrors(cudaGetLastError());
+    checkCudaErrors(cudaDeviceSynchronize());
 }
 
 int main()
@@ -145,7 +249,7 @@ int main()
     const int  image_height      = 800;
     const int  thread_width      = 32;
     const int  thread_height     = 16;
-    const int  samples_per_pixel = 5;
+    const int  samples_per_pixel = 200;
     const int  max_depth         = 5;
     const auto aspect_ratio      = static_cast<float>(image_width) / image_height;
 
@@ -174,27 +278,34 @@ int main()
     // Render Init
 
     Window window(image_width, image_height, "Ray tracing (GPU)");
-    size_t num_pixels = image_width * image_height;
-    color *frame_buffer;
-    checkCudaErrors(cudaMallocManaged((void **)&frame_buffer, num_pixels * sizeof(color)));
+
+    pixel_data *pixel_buffer;
+    sample     *frame_buffer;
+    checkCudaErrors(
+        cudaMalloc((void **)&pixel_buffer, image_width * image_height * sizeof(pixel_data)));
+    checkCudaErrors(
+        cudaMallocManaged((void **)&frame_buffer, image_width * image_height * sizeof(sample)));
 
     dim3 blocks((image_width + thread_width - 1) / thread_width,
                 (image_height + thread_height - 1) / thread_height);
     dim3 threads(thread_width, thread_height);
 
+    init_pixel_data<<<blocks, threads>>>(pixel_buffer, frame_buffer, image_width, image_height);
+    checkCudaErrors(cudaGetLastError());
+    checkCudaErrors(cudaDeviceSynchronize());
+
     // Render
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
-    ray_radiance<<<blocks, threads>>>(frame_buffer,
-                                      image_width,
-                                      image_height,
-                                      samples_per_pixel,
-                                      max_depth,
-                                      cam,
-                                      scene_ptr);
-    checkCudaErrors(cudaGetLastError());
-    checkCudaErrors(cudaDeviceSynchronize());
+    render(pixel_buffer,
+           frame_buffer,
+           image_width,
+           image_height,
+           samples_per_pixel,
+           max_depth,
+           cam,
+           scene_ptr);
 
     auto  end_time   = std::chrono::high_resolution_clock::now();
     auto  elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -206,8 +317,8 @@ int main()
     // Copy frame buffer to window
     for (int j = image_height - 1; j >= 0; --j) {
         for (int i = 0; i < image_width; ++i) {
-            size_t pixel_index = j * image_width + i;
-            color  c           = radiance_to_color(frame_buffer[pixel_index], samples_per_pixel);
+            const sample &s                  = frame_buffer[j * image_width + i];
+            color         c                  = radiance_to_color(s.radiance, s.num_samples);
             *window(i, image_height - 1 - j) = color_to_rgb_integer(c);
         }
     }
@@ -225,4 +336,5 @@ int main()
     checkCudaErrors(cudaFree(scene_ptr));
     checkCudaErrors(cudaFree(cam));
     checkCudaErrors(cudaFree(frame_buffer));
+    checkCudaErrors(cudaFree(pixel_buffer));
 }

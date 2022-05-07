@@ -55,13 +55,6 @@ public:
                    lower_left_corner + s * horizontal + t * vertical - origin - offset);
     }
 
-    __device__ ray get_ray(rstate_t state, int i, int j, int width, int height) const
-    {
-        float u = (i + random_float(state)) / (width - 1);
-        float v = (j + random_float(state)) / (height - 1);
-        return get_ray(state, u, v);
-    }
-
 private:
     point3 origin;
     point3 lower_left_corner;
