@@ -14,10 +14,10 @@
 #include "onb.h"
 #include "rtweekend.h"
 
-__device__ inline vec3 random_cosine_direction()
+__device__ inline vec3 random_cosine_direction(rstate_t state)
 {
-    auto r1 = random_float();
-    auto r2 = random_float();
+    auto r1 = random_float(state);
+    auto r2 = random_float(state);
     auto z  = sqrt(1 - r2);
 
     auto phi = 2 * pi * r1;
@@ -27,10 +27,10 @@ __device__ inline vec3 random_cosine_direction()
     return vec3(x, y, z);
 }
 
-__device__ inline vec3 random_to_sphere(float radius, float distance_squared)
+__device__ inline vec3 random_to_sphere(rstate_t state, float radius, float distance_squared)
 {
-    auto r1 = random_float();
-    auto r2 = random_float();
+    auto r1 = random_float(state);
+    auto r2 = random_float(state);
     auto z  = 1 + r2 * (sqrt(1 - radius * radius / distance_squared) - 1);
 
     auto phi = 2 * pi * r1;
@@ -45,7 +45,7 @@ class pdf
 public:
     __device__ virtual ~pdf() {}
     __device__ virtual float value(const vec3 &direction) const = 0;
-    __device__ virtual vec3  generate() const                   = 0;
+    __device__ virtual vec3  generate(rstate_t state) const     = 0;
 };
 
 class cosine_pdf : public pdf
@@ -60,9 +60,9 @@ public:
         return (cosine <= 0) ? 0 : cosine / pi;
     }
 
-    __device__ virtual vec3 generate() const override
+    __device__ virtual vec3 generate(rstate_t state) const override
     {
-        return uvw.local(random_cosine_direction());
+        return uvw.local(random_cosine_direction(state));
     }
 
 public:
@@ -77,7 +77,7 @@ public:
     {
         return h.pdf_value(o, direction);
     }
-    __device__ virtual vec3 generate() const override { return h.random(o); }
+    __device__ virtual vec3 generate(rstate_t state) const override { return h.random(o, state); }
 
 public:
     point3          o;
@@ -94,12 +94,12 @@ public:
         return 0.5f * p0.value(direction) + 0.5f * p1.value(direction);
     }
 
-    __device__ virtual vec3 generate() const override
+    __device__ virtual vec3 generate(rstate_t state) const override
     {
-        if (random_float() < 0.5f)
-            return p0.generate();
+        if (random_float(state) < 0.5f)
+            return p0.generate(state);
         else
-            return p1.generate();
+            return p1.generate(state);
     }
 
 public:

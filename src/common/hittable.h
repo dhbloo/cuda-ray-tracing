@@ -39,7 +39,7 @@ public:
     __device__ virtual bool  hit(const ray &r, float t_min, float t_max, hit_record &rec) const = 0;
     __device__ virtual bool  bounding_box(float time0, float time1, aabb &output_box) const     = 0;
     __device__ virtual float pdf_value(const vec3 &o, const vec3 &v) const { return 0.0; }
-    __device__ virtual vec3  random(const vec3 &o) const { return vec3(1, 0, 0); }
+    __device__ virtual vec3  random(const vec3 &o, rstate_t state) const { return vec3(1, 0, 0); }
 };
 
 class flip_face : public hittable

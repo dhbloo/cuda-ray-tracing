@@ -9,6 +9,14 @@
 // along with this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //==============================================================================================
 
+#define rstate_t curandState *
+#include <cuda_runtime.h>
+#include <curand.h>
+#include <curand_kernel.h>
+#include <device_launch_parameters.h>
+
+// common headers
+
 #include "camera.h"
 #include "color.h"
 #include "hittable_list.h"
@@ -19,10 +27,6 @@
 #include "external/window.h"
 
 #include <atomic>
-#include <cuda_runtime.h>
-#include <curand.h>
-#include <curand_kernel.h>
-#include <device_launch_parameters.h>
 #include <iomanip>
 #include <iostream>
 #include <thread>
@@ -43,44 +47,12 @@ void check_cuda(cudaError_t result, char const *const func, const char *const fi
     }
 }
 
-// ======================================================
-// 这里使用一个“全局”函数，来获取每个线程的随机数
-
-// 表示随机数状态的全局数组
-__device__ curandState *dev_rand_state;
-__device__ int          rand_width, rand_height;
-__device__ inline float random_float()
+__device__ float random_float(rstate_t state)
 {
-    int i = threadIdx.x + blockIdx.x * blockDim.x;
-    int j = threadIdx.y + blockIdx.y * blockDim.y;
-    if (i >= rand_width || j >= rand_height)
-        return 0.0f;
-
-    int   id = j * rand_width + i;
-    float x  = curand_uniform(&dev_rand_state[id]);
-
-    return x;
+    return curand_uniform((curandState *)state);
 }
 
 // ======================================================
-
-// 初始化随机数状态
-
-__global__ void rand_init(int width, int height, curandState *rand_state)
-{
-    int i = threadIdx.x + blockIdx.x * blockDim.x;
-    int j = threadIdx.y + blockIdx.y * blockDim.y;
-    if (i >= width || j >= height)
-        return;
-
-    int id = j * width + i;
-    if (id == 0) {
-        dev_rand_state = rand_state;
-        rand_width     = width;
-        rand_height    = height;
-    }
-    curand_init(42 + id, 0, 0, &rand_state[id]);
-}
 
 // 构造场景
 
@@ -114,6 +86,9 @@ __global__ void ray_radiance(color          *fb,
     if (i >= width || j >= height)
         return;
 
+    curandState rand_state;
+    curand_init(42 + j * width + i, 0, 0, &rand_state);
+
     const hittable &world  = *scene_ptr[0];
     const hittable &lights = *scene_ptr[1];
 
@@ -124,7 +99,7 @@ __global__ void ray_radiance(color          *fb,
     ray            r;
 
     for (int s = 0; s < samples_per_pixel; ++s) {
-        r      = cam->get_ray(i, j, width, height);
+        r      = cam->get_ray(&rand_state, i, j, width, height);
         accumL = color();
         accumR = color(1.0f, 1.0f, 1.0f);
 
@@ -137,7 +112,7 @@ __global__ void ray_radiance(color          *fb,
 
             accumL += accumR * rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
 
-            if (!rec.mat_ptr->scatter(r, rec, srec))
+            if (!rec.mat_ptr->scatter(r, rec, srec, &rand_state))
                 break;
 
             accumR = accumR * srec.attenuation;
@@ -148,10 +123,10 @@ __global__ void ray_radiance(color          *fb,
             else {
                 hittable_pdf light(lights, rec.p);
                 mixture_pdf  p(light, *srec.pdf_ptr);
-                ray          scattered = ray(rec.p, p.generate());
+                ray          scattered = ray(rec.p, p.generate(&rand_state));
                 auto         pdf_val   = p.value(scattered.direction());
 
-                accumR *= rec.mat_ptr->scattering_pdf(r, rec, scattered) / pdf_val;
+                accumR *= rec.mat_ptr->scattering_pdf(r, rec, scattered, &rand_state) / pdf_val;
                 r = scattered;
             }
         }
@@ -170,7 +145,7 @@ int main()
     const int  image_height      = 800;
     const int  thread_width      = 32;
     const int  thread_height     = 16;
-    const int  samples_per_pixel = 200;
+    const int  samples_per_pixel = 5;
     const int  max_depth         = 5;
     const auto aspect_ratio      = static_cast<float>(image_width) / image_height;
 
@@ -203,16 +178,9 @@ int main()
     color *frame_buffer;
     checkCudaErrors(cudaMallocManaged((void **)&frame_buffer, num_pixels * sizeof(color)));
 
-    curandState *rand_state;
-    checkCudaErrors(cudaMalloc((void **)&rand_state, num_pixels * sizeof(curandState)));
-
     dim3 blocks((image_width + thread_width - 1) / thread_width,
                 (image_height + thread_height - 1) / thread_height);
     dim3 threads(thread_width, thread_height);
-
-    rand_init<<<blocks, threads>>>(image_width, image_height, rand_state);
-    checkCudaErrors(cudaGetLastError());
-    checkCudaErrors(cudaDeviceSynchronize());
 
     // Render
 
@@ -257,5 +225,4 @@ int main()
     checkCudaErrors(cudaFree(scene_ptr));
     checkCudaErrors(cudaFree(cam));
     checkCudaErrors(cudaFree(frame_buffer));
-    checkCudaErrors(cudaFree(rand_state));
 }

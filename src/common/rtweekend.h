@@ -19,15 +19,16 @@
 
     #define __dual__ __host__ __device__
 
-__device__ float random_float();
+__device__ float random_float(rstate_t state);
 
 #else
 
     #define __host__
     #define __device__
     #define __dual__
+    #define rstate_t void *
 
-inline float random_float()
+inline float random_float(rstate_t state)
 {
     // Returns a random real in [0,1).
     return rand() / (RAND_MAX + 1.0f);
@@ -123,16 +124,16 @@ __dual__ constexpr float clamp(float x, float min, float max)
     return x;
 }
 
-__device__ inline float random_float(float min, float max)
+__device__ inline float random_float(rstate_t state, float min, float max)
 {
     // Returns a random real in [min,max).
-    return min + (max - min) * random_float();
+    return min + (max - min) * random_float(state);
 }
 
-__device__ inline int random_int(int min, int max)
+__device__ inline int random_int(rstate_t state, int min, int max)
 {
     // Returns a random integer in [min,max].
-    int x = (int)random_float(float(min), float(max + 1));
+    int x = (int)random_float(state, float(min), float(max + 1));
     return x < min ? min : x > max ? max : x;
 }
 

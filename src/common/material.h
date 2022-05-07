@@ -36,13 +36,15 @@ public:
     }
 
     __device__ virtual bool
-    scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const
+    scatter(const ray &r_in, const hit_record &rec, scatter_record &srec, rstate_t state) const
     {
         return false;
     }
 
-    __device__ virtual float
-    scattering_pdf(const ray &r_in, const hit_record &rec, const ray &scattered) const
+    __device__ virtual float scattering_pdf(const ray        &r_in,
+                                            const hit_record &rec,
+                                            const ray        &scattered,
+                                            rstate_t          state) const
     {
         return 0;
     }
@@ -54,8 +56,10 @@ public:
     __device__ lambertian(const color &a) : albedo(make_shared<solid_color>(a)) {}
     __device__ lambertian(shared_ptr<tex> a) : albedo(a) {}
 
-    __device__ virtual bool
-    scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const override
+    __device__ virtual bool scatter(const ray        &r_in,
+                                    const hit_record &rec,
+                                    scatter_record   &srec,
+                                    rstate_t          state) const override
     {
         srec.is_specular = false;
         srec.attenuation = albedo->value(rec.u, rec.v, rec.p);
@@ -64,8 +68,10 @@ public:
         return true;
     }
 
-    __device__ float
-    scattering_pdf(const ray &r_in, const hit_record &rec, const ray &scattered) const override
+    __device__ float scattering_pdf(const ray        &r_in,
+                                    const hit_record &rec,
+                                    const ray        &scattered,
+                                    rstate_t          state) const override
     {
         auto cosine = dot(rec.normal, unit_vector(scattered.direction()));
         return cosine < 0 ? 0 : cosine / pi;
@@ -80,11 +86,13 @@ class metal : public material
 public:
     __device__ metal(const color &a, float f) : albedo(a), fuzz(f < 1 ? f : 1) {}
 
-    __device__ virtual bool
-    scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const override
+    __device__ virtual bool scatter(const ray        &r_in,
+                                    const hit_record &rec,
+                                    scatter_record   &srec,
+                                    rstate_t          state) const override
     {
         vec3 reflected    = reflect(unit_vector(r_in.direction()), rec.normal);
-        srec.specular_ray = ray(rec.p, reflected + fuzz * random_in_unit_sphere());
+        srec.specular_ray = ray(rec.p, reflected + fuzz * random_in_unit_sphere(state));
         srec.attenuation  = albedo;
         srec.is_specular  = true;
         srec.pdf_ptr      = nullptr;
@@ -101,8 +109,10 @@ class dielectric : public material
 public:
     __device__ dielectric(float index_of_refraction) : ir(index_of_refraction) {}
 
-    __device__ virtual bool
-    scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const override
+    __device__ virtual bool scatter(const ray        &r_in,
+                                    const hit_record &rec,
+                                    scatter_record   &srec,
+                                    rstate_t          state) const override
     {
         srec.is_specular       = true;
         srec.pdf_ptr           = nullptr;
@@ -116,7 +126,7 @@ public:
         bool cannot_refract = refraction_ratio * sin_theta > 1.0f;
         vec3 direction;
 
-        if (cannot_refract || reflectance(cos_theta, refraction_ratio) > random_float())
+        if (cannot_refract || reflectance(cos_theta, refraction_ratio) > random_float(state))
             direction = reflect(unit_direction, rec.normal);
         else
             direction = refract(unit_direction, rec.normal, refraction_ratio);
@@ -165,10 +175,12 @@ public:
     __device__ isotropic(color c) : albedo(make_shared<solid_color>(c)) {}
     __device__ isotropic(shared_ptr<tex> a) : albedo(a) {}
 
-    __device__ virtual bool
-    scatter(const ray &r_in, const hit_record &rec, scatter_record &srec) const override
+    __device__ virtual bool scatter(const ray        &r_in,
+                                    const hit_record &rec,
+                                    scatter_record   &srec,
+                                    rstate_t          state) const override
     {
-        srec.specular_ray = ray(rec.p, random_in_unit_sphere());
+        srec.specular_ray = ray(rec.p, random_in_unit_sphere(state));
         srec.attenuation  = albedo->value(rec.u, rec.v, rec.p);
         srec.is_specular  = true;
         srec.pdf_ptr      = nullptr;

@@ -34,7 +34,7 @@ public:
     hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
     __device__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override;
     __device__ virtual float pdf_value(const vec3 &o, const vec3 &v) const override;
-    __device__ virtual vec3  random(const vec3 &o) const override;
+    __device__ virtual vec3  random(const vec3 &o, rstate_t state) const override;
 
 public:
     shared_ptr<hittable> *objects;
@@ -117,13 +117,13 @@ __device__ float hittable_list::pdf_value(const point3 &o, const vec3 &v) const
     return sum;
 }
 
-__device__ vec3 hittable_list::random(const vec3 &o) const
+__device__ vec3 hittable_list::random(const vec3 &o, rstate_t state) const
 {
     if (size == 0)
         return vec3();
 
-    int index = random_int(0, static_cast<int>(size) - 1);
-    return objects[index]->random(o);
+    int index = random_int(state, 0, static_cast<int>(size) - 1);
+    return objects[index]->random(o, state);
 }
 
 #endif

@@ -47,19 +47,19 @@ public:
         time1       = _time1;
     }
 
-    __device__ ray get_ray(float s, float t) const
+    __device__ ray get_ray(rstate_t state, float s, float t) const
     {
-        vec3 rd     = lens_radius * random_in_unit_disk();
+        vec3 rd     = lens_radius * random_in_unit_disk(state);
         vec3 offset = u * rd.x() + v * rd.y();
         return ray(origin + offset,
                    lower_left_corner + s * horizontal + t * vertical - origin - offset);
     }
 
-    __device__ ray get_ray(int i, int j, int width, int height) const
+    __device__ ray get_ray(rstate_t state, int i, int j, int width, int height) const
     {
-        float u = (i + random_float()) / (width - 1);
-        float v = (j + random_float()) / (height - 1);
-        return get_ray(u, v);
+        float u = (i + random_float(state)) / (width - 1);
+        float v = (j + random_float(state)) / (height - 1);
+        return get_ray(state, u, v);
     }
 
 private:

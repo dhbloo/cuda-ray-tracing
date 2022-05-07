@@ -78,9 +78,9 @@ public:
         return distance_squared / (cosine * area);
     }
 
-    __device__ virtual vec3 random(const point3 &origin) const override
+    __device__ virtual vec3 random(const point3 &origin, rstate_t state) const override
     {
-        auto random_point = point3(random_float(x0, x1), k, random_float(z0, z1));
+        auto random_point = point3(random_float(state, x0, x1), k, random_float(state, z0, z1));
         return random_point - origin;
     }
 

@@ -27,7 +27,7 @@ public:
     hit(const ray &r, float t_min, float t_max, hit_record &rec) const override;
     __device__ virtual bool bounding_box(float time0, float time1, aabb &output_box) const override;
     __device__ virtual float pdf_value(const point3 &o, const vec3 &v) const override;
-    __device__ virtual vec3  random(const point3 &o) const override;
+    __device__ virtual vec3  random(const point3 &o, rstate_t state) const override;
 
 public:
     point3               center;
@@ -64,13 +64,13 @@ __device__ float sphere::pdf_value(const point3 &o, const vec3 &v) const
     return 1 / solid_angle;
 }
 
-__device__ vec3 sphere::random(const point3 &o) const
+__device__ vec3 sphere::random(const point3 &o, rstate_t state) const
 {
     vec3 direction        = center - o;
     auto distance_squared = direction.length_squared();
     onb  uvw;
     uvw.build_from_w(direction);
-    return uvw.local(random_to_sphere(radius, distance_squared));
+    return uvw.local(random_to_sphere(state, radius, distance_squared));
 }
 
 __device__ bool sphere::bounding_box(float time0, float time1, aabb &output_box) const

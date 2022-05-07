@@ -43,7 +43,7 @@ color ray_radiance(ray r, const hittable &world, const hittable &lights, int dep
         scatter_record srec;
         accumL += accumR * rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
 
-        if (!rec.mat_ptr->scatter(r, rec, srec))
+        if (!rec.mat_ptr->scatter(r, rec, srec, 0))
             break;
         else
             accumR = accumR * srec.attenuation;
@@ -54,10 +54,10 @@ color ray_radiance(ray r, const hittable &world, const hittable &lights, int dep
         else {
             hittable_pdf light(lights, rec.p);
             mixture_pdf  p(light, *srec.pdf_ptr);
-            ray          scattered = ray(rec.p, p.generate());
+            ray          scattered = ray(rec.p, p.generate(0));
             auto         pdf_val   = p.value(scattered.direction());
 
-            accumR = accumR * rec.mat_ptr->scattering_pdf(r, rec, scattered) / pdf_val;
+            accumR = accumR * rec.mat_ptr->scattering_pdf(r, rec, scattered, 0) / pdf_val;
             r      = scattered;
         }
     }
@@ -72,7 +72,7 @@ int main()
     const int  image_width       = 800;
     const int  image_height      = 800;
     const auto aspect_ratio      = static_cast<float>(image_width) / image_height;
-    const int  samples_per_pixel = 200;
+    const int  samples_per_pixel = 10;
     const int  max_depth         = 5;
 
     // World
@@ -123,9 +123,9 @@ int main()
         for (int i = 0; i < image_width; ++i) {
             color radiance(0, 0, 0);
             for (int s = 0; s < samples_per_pixel; ++s) {
-                auto u = (i + random_float()) / (image_width - 1);
-                auto v = (j + random_float()) / (image_height - 1);
-                ray  r = cam.get_ray(u, v);
+                auto u = (i + random_float(0)) / (image_width - 1);
+                auto v = (j + random_float(0)) / (image_height - 1);
+                ray  r = cam.get_ray(0, u, v);
                 radiance += ray_radiance(r, world, lights, max_depth);
             }
             color pixel_color                = radiance_to_color(radiance, samples_per_pixel);

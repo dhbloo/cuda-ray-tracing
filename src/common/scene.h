@@ -15,7 +15,6 @@
 #include "box.h"
 #include "camera.h"
 #include "color.h"
-#include "constant_medium.h"
 #include "hittable_list.h"
 #include "material.h"
 #include "rtweekend.h"
@@ -61,11 +60,6 @@ __device__ void cornell_box(hittable_list &objects, hittable_list &lights)
     objects.add(
         make_shared<constant_medium>(ss_ball, 0.015f, make_shared<solid_color>(0.2f, 0.4f,
     0.9f)));*/
-
-    // auto boundary =
-    //     make_shared<box>(point3(0, 400, 0), point3(555, 555, 555), make_shared<material>());
-    // auto fog = make_shared<constant_medium>(boundary, 0.0006f, make_shared<solid_color>(1, 1,
-    // 1)); objects.add(fog);
 
     lights.add(top_light);
     lights.add(ball);

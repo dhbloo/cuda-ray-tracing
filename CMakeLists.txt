@@ -21,7 +21,6 @@ set(COMMON_ALL
 	src/common/material.h
 	src/common/pdf.h
 	src/common/sphere.h
-	src/common/constant_medium.h
 	src/common/scene.h
 	src/common/rtw_stb_image.cpp
 	src/common/external/window.h
@@ -52,4 +51,7 @@ endif()
 find_package(CUDAToolkit)
 add_executable(ray-tracing-gpu ${SOURCE_GPU})
 target_link_libraries(ray-tracing-gpu PRIVATE CUDA::cudart)
+target_compile_options(ray-tracing-gpu PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
+                       --generate-line-info
+                       >)
 set_target_properties(ray-tracing-gpu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

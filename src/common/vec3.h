@@ -59,14 +59,16 @@ public:
         return (fabs(e[0]) < s) && (fabs(e[1]) < s) && (fabs(e[2]) < s);
     }
 
-    __device__ inline static vec3 random()
+    __device__ inline static vec3 random(rstate_t state)
     {
-        return vec3(random_float(), random_float(), random_float());
+        return vec3(random_float(state), random_float(state), random_float(state));
     }
 
-    __device__ inline static vec3 random(float min, float max)
+    __device__ inline static vec3 random(rstate_t state, float min, float max)
     {
-        return vec3(random_float(min, max), random_float(min, max), random_float(min, max));
+        return vec3(random_float(state, min, max),
+                    random_float(state, min, max),
+                    random_float(state, min, max));
     }
 
 public:
@@ -131,34 +133,34 @@ __dual__ inline vec3 unit_vector(vec3 v)
     return v / v.length();
 }
 
-__device__ inline vec3 random_in_unit_disk()
+__device__ inline vec3 random_in_unit_disk(rstate_t state)
 {
     while (true) {
-        auto p = vec3(random_float(-1, 1), random_float(-1, 1), 0);
+        auto p = vec3(random_float(state, -1, 1), random_float(state, -1, 1), 0);
         if (p.length_squared() >= 1)
             continue;
         return p;
     }
 }
 
-__device__ inline vec3 random_in_unit_sphere()
+__device__ inline vec3 random_in_unit_sphere(rstate_t state)
 {
     while (true) {
-        auto p = vec3::random(-1, 1);
+        auto p = vec3::random(state, -1, 1);
         if (p.length_squared() >= 1)
             continue;
         return p;
     }
 }
 
-__device__ inline vec3 random_unit_vector()
+__device__ inline vec3 random_unit_vector(rstate_t state)
 {
-    return unit_vector(random_in_unit_sphere());
+    return unit_vector(random_in_unit_sphere(state));
 }
 
-__device__ inline vec3 random_in_hemisphere(const vec3 &normal)
+__device__ inline vec3 random_in_hemisphere(rstate_t state, const vec3 &normal)
 {
-    vec3 in_unit_sphere = random_in_unit_sphere();
+    vec3 in_unit_sphere = random_in_unit_sphere(state);
     if (dot(in_unit_sphere, normal) > 0.0)  // In the same hemisphere as the normal
         return in_unit_sphere;
     else
