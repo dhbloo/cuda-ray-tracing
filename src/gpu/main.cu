@@ -27,6 +27,7 @@
 #include "external/window.h"
 
 #include <atomic>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <thread>
@@ -73,12 +74,7 @@ __global__ void cleanup_scene(hittable_list **scene_ptr)
 
 // 渲染
 
-struct sample
-{
-    color radiance;
-    int   num_samples;
-};
-
+// SOA instead of AOS
 struct render_data
 {
     int         *x;
@@ -92,16 +88,6 @@ struct render_data
     // managed memory
     color *m_radiance;
     int   *m_num_samples;
-};
-
-struct pixel_data
-{
-    int         x, y;
-    int         depth;
-    curandState rand_state;
-    ray         r;
-    color       accumL, accumR;
-    hit_record  rec;
 };
 
 __global__ void init_pixel_data(const render_data rd, int width, int height)
@@ -226,13 +212,14 @@ void cleanup_render_data(render_data &rd)
     checkCudaErrors(cudaFree(rd.m_num_samples));
 }
 
-void render(const render_data &rd,
-            int                width,
-            int                height,
-            int                samples_per_pixel,
-            int                max_depth,
-            camera            *cam,
-            hittable_list    **scene)
+void render(const render_data       &rd,
+            int                      width,
+            int                      height,
+            int                      samples_per_pixel,
+            int                      max_depth,
+            camera                  *cam,
+            hittable_list          **scene,
+            std::function<void(int)> framedone_callback)
 {
     const int num_pixels = width * height;
     const int threads    = 512;
@@ -250,6 +237,9 @@ void render(const render_data &rd,
                                                  scene);
         checkCudaErrors(cudaGetLastError());
         checkCudaErrors(cudaDeviceSynchronize());
+
+        if (framedone_callback)
+            framedone_callback(i);
     }
 
     // accumulate radiances back to frame buffer for completed rays
@@ -259,15 +249,30 @@ void render(const render_data &rd,
     checkCudaErrors(cudaDeviceSynchronize());
 }
 
+void display_frame(const render_data &rd, int width, int height, Window &window)
+{
+    // Copy frame buffer to window
+    for (int j = height - 1; j >= 0; --j) {
+        for (int i = 0; i < width; ++i) {
+            int   idx = j * width + i;
+            color c   = radiance_to_color(rd.m_radiance[idx], rd.m_num_samples[idx]);
+            *window(i, height - 1 - j) = color_to_rgb_integer(c);
+        }
+    }
+
+    window.update();
+}
+
 int main()
 {
     // Image
 
-    const int  image_width       = 800;
-    const int  image_height      = 800;
-    const int  samples_per_pixel = 500;
-    const int  max_depth         = 10;
-    const auto aspect_ratio      = static_cast<float>(image_width) / image_height;
+    const int  image_width         = 800;
+    const int  image_height        = 800;
+    const int  samples_per_pixel   = 1000;
+    const int  max_depth           = 10;
+    const int  samples_per_display = 300;
+    const auto aspect_ratio        = static_cast<float>(image_width) / image_height;
 
     // World
 
@@ -312,7 +317,17 @@ int main()
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
-    render(rd, image_width, image_height, samples_per_pixel, max_depth, cam, scene_ptr);
+    render(rd,
+           image_width,
+           image_height,
+           samples_per_pixel,
+           max_depth,
+           cam,
+           scene_ptr,
+           [&](int sample_count) {
+               if ((sample_count + 1) % samples_per_display == 0)
+                   display_frame(rd, image_width, image_height, window);
+           });
 
     auto  end_time   = std::chrono::high_resolution_clock::now();
     auto  elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -321,16 +336,8 @@ int main()
     std::cout << std::fixed << std::setprecision(3) << "\nDone after " << elapsed_seconds
               << " seconds, " << total_rays / elapsed_seconds / 1000000.f << " Mrays per second.\n";
 
-    // Copy frame buffer to window
-    for (int j = image_height - 1; j >= 0; --j) {
-        for (int i = 0; i < image_width; ++i) {
-            int   idx = j * image_width + i;
-            color c   = radiance_to_color(rd.m_radiance[idx], rd.m_num_samples[idx]);
-            *window(i, image_height - 1 - j) = color_to_rgb_integer(c);
-        }
-    }
+    display_frame(rd, image_width, image_height, window);
 
-    window.update();
     while (window.is_run()) {
         window.dispatch();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

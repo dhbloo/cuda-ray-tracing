@@ -72,7 +72,7 @@ int main()
     const int  image_width       = 800;
     const int  image_height      = 800;
     const auto aspect_ratio      = static_cast<float>(image_width) / image_height;
-    const int  samples_per_pixel = 50;
+    const int  samples_per_pixel = 200;
     const int  max_depth         = 10;
 
     // World
