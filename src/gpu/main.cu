@@ -88,7 +88,6 @@ struct render_data
     ray         *r;
     color       *accumL;
     color       *accumR;
-    hit_record  *rec;
 
     // managed memory
     color *m_radiance;
@@ -122,13 +121,27 @@ __global__ void init_pixel_data(const render_data rd, int width, int height)
     rd.m_num_samples[idx] = 0;
 }
 
-__global__ void generate_rays(const render_data rd,
-                              int               offset,
-                              int               num_pixels,
-                              int               width,
-                              int               height,
-                              int               max_depth,
-                              const camera     *cam)
+__global__ void accumulate_radiance(const render_data rd, int offset, int num_pixels, int width)
+{
+    int idx = threadIdx.x + blockIdx.x * blockDim.x + offset;
+    if (idx >= num_pixels)
+        return;
+
+    if (rd.depth[idx] <= 0) {
+        int frame_idx = rd.y[idx] * width + rd.x[idx];
+        rd.m_radiance[frame_idx] += rd.accumL[idx];
+        rd.m_num_samples[frame_idx]++;
+    }
+}
+
+__global__ void genrays_hit_scatter(const render_data rd,
+                                    int               offset,
+                                    int               num_pixels,
+                                    int               width,
+                                    int               height,
+                                    int               max_depth,
+                                    const camera     *cam,
+                                    hittable_list   **scene)
 {
     int idx = threadIdx.x + blockIdx.x * blockDim.x + offset;
     if (idx >= num_pixels)
@@ -147,38 +160,16 @@ __global__ void generate_rays(const render_data rd,
         rd.accumR[idx] = color(1.0f, 1.0f, 1.0f);
         rd.depth[idx]  = max_depth;
     }
-}
 
-__global__ void hit_world(const render_data rd, int offset, int num_pixels, hittable_list **scene)
-{
-    int idx = threadIdx.x + blockIdx.x * blockDim.x + offset;
-    if (idx >= num_pixels)
-        return;
+    hit_record     rec;
+    scatter_record srec;
+    ray            r = rd.r[idx];
 
-    hit_record hit_rec;
-    ray        r = rd.r[idx];
-
-    if (scene[0]->hit(r, 0.001f, infinity, hit_rec)) {
-        rd.rec[idx] = hit_rec;
-    }
-    else {
+    if (!scene[0]->hit(r, 0.001f, infinity, rec)) {
         rd.accumL[idx] += rd.accumR[idx] * background_radiance(r);
         rd.depth[idx] = 0;
+        return;
     }
-}
-
-__global__ void scatter(const render_data rd, int offset, int num_pixels, hittable_list **scene)
-{
-    int idx = threadIdx.x + blockIdx.x * blockDim.x + offset;
-    if (idx >= num_pixels)
-        return;
-
-    if (rd.depth[idx] <= 0)
-        return;
-
-    scatter_record srec;
-    ray            r   = rd.r[idx];
-    hit_record     rec = rd.rec[idx];
 
     rd.accumL[idx] += rd.accumR[idx] * rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
 
@@ -216,7 +207,6 @@ void setup_render_data(render_data &rd, int width, int height)
     checkCudaErrors(cudaMalloc((void **)&rd.r, n * sizeof(ray)));
     checkCudaErrors(cudaMalloc((void **)&rd.accumL, n * sizeof(color)));
     checkCudaErrors(cudaMalloc((void **)&rd.accumR, n * sizeof(color)));
-    checkCudaErrors(cudaMalloc((void **)&rd.rec, n * sizeof(hit_record)));
 
     checkCudaErrors(cudaMallocManaged((void **)&rd.m_radiance, n * sizeof(color)));
     checkCudaErrors(cudaMallocManaged((void **)&rd.m_num_samples, n * sizeof(int)));
@@ -231,7 +221,6 @@ void cleanup_render_data(render_data &rd)
     checkCudaErrors(cudaFree(rd.r));
     checkCudaErrors(cudaFree(rd.accumL));
     checkCudaErrors(cudaFree(rd.accumR));
-    checkCudaErrors(cudaFree(rd.rec));
 
     checkCudaErrors(cudaFree(rd.m_radiance));
     checkCudaErrors(cudaFree(rd.m_num_samples));
@@ -251,22 +240,21 @@ void render(const render_data &rd,
     const int offset     = 0;
 
     for (int i = 0; i < samples_per_pixel; i++) {
-        generate_rays<<<blocks, threads>>>(rd, offset, num_pixels, width, height, max_depth, cam);
-        checkCudaErrors(cudaGetLastError());
-        checkCudaErrors(cudaDeviceSynchronize());
-
-        hit_world<<<blocks, threads>>>(rd, offset, num_pixels, scene);
-        checkCudaErrors(cudaGetLastError());
-        checkCudaErrors(cudaDeviceSynchronize());
-
-        scatter<<<blocks, threads>>>(rd, offset, num_pixels, scene);
+        genrays_hit_scatter<<<blocks, threads>>>(rd,
+                                                 offset,
+                                                 num_pixels,
+                                                 width,
+                                                 height,
+                                                 max_depth,
+                                                 cam,
+                                                 scene);
         checkCudaErrors(cudaGetLastError());
         checkCudaErrors(cudaDeviceSynchronize());
     }
 
-    // accumulate colors back to frame buffer for completed rays
+    // accumulate radiances back to frame buffer for completed rays
 
-    generate_rays<<<blocks, threads>>>(rd, offset, num_pixels, width, height, max_depth, cam);
+    accumulate_radiance<<<blocks, threads>>>(rd, offset, num_pixels, width);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 }
