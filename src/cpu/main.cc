@@ -72,7 +72,7 @@ int main()
     const int  image_width       = 800;
     const int  image_height      = 800;
     const auto aspect_ratio      = static_cast<float>(image_width) / image_height;
-    const int  samples_per_pixel = 10;
+    const int  samples_per_pixel = 50;
     const int  max_depth         = 5;
 
     // World
@@ -103,6 +103,7 @@ int main()
 #ifdef WITH_OPENMP
     omp_lock_t lock;
     omp_init_lock(&lock);
+    omp_set_num_threads(8);
     #pragma omp parallel for
 #endif
     for (int j = image_height - 1; j >= 0; --j) {
